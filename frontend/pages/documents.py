@@ -1081,4 +1081,8 @@ class DocumentsPage(QWidget):
         self.view_requested.emit(full, role)
 
     def _on_workflow_changed(self, *_) -> None:
+        # Hidden pages reload in showEvent when they are opened; reloading
+        # every page on each server event froze the window.
+        if not self.isVisible():
+            return
         self.load_documents()

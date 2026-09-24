@@ -40,6 +40,14 @@ class WebSocketService(QObject):
         "DOCUMENT_CLOSED",
         "OCR_COMPLETED",
         "ATTACHMENT_ADDED",
+        # Event names the backend actually broadcasts (backend/main.py).
+        "DIRECTOR_REVIEW_REQUESTED",
+        "DIRECTOR_REMARK",
+        "WORK_ASSIGNED",
+        "WORK_STAGE_CHANGED",
+        "PROGRESS_UPDATED",
+        "WORK_SUBMITTED",
+        "WORK_REVIEWED",
     })
 
     def __init__(self):
@@ -160,10 +168,13 @@ class WebSocketService(QObject):
     def _on_error(self, error_code: Any) -> None:
         err_msg = self._ws.errorString() if self._ws else str(error_code)
         logger.warning("WebSocket error: %s", err_msg)
-        self.connection_state_changed.emit(
-            False,
-            f"Connection Error: {err_msg}",
-        )
+        # The connection is re-established automatically (see
+        # _on_disconnected); tell the user that instead of a raw socket error.
+        if self._should_reconnect:
+            status = "Live updates reconnecting..."
+        else:
+            status = f"Live updates unavailable: {err_msg}"
+        self.connection_state_changed.emit(False, status)
 
     def _send_heartbeat(self) -> None:
         if self._ws and self._is_connected:
@@ -203,6 +214,9 @@ class WebSocketService(QObject):
         event_type = str(data.get("event_type", "")).upper()
         doc_id = data.get("document_id")
 
+        if not event_type or event_type in ("PING", "PONG", "HEARTBEAT"):
+            return
+
         from services.event_bus import event_bus
 
         if event_type in ("DOCUMENT_CREATED", "INTAKE_REGISTERED"):
@@ -211,19 +225,10 @@ class WebSocketService(QObject):
             return
 
         if event_type in self.DOCUMENT_REFRESH_EVENTS:
+            # Views reload the document themselves (only the visible ones);
+            # fetching it here too would block the window once per event.
             if doc_id:
-                try:
-                    from services.document_service import document_service
-
-                    updated_doc = document_service.get_document(doc_id)
-
-                    if updated_doc:
-                        event_bus.notify_document_updated(updated_doc)
-                    else:
-                        event_bus.notify_workflow_updated(doc_id)
-
-                except Exception:
-                    event_bus.notify_workflow_updated(doc_id)
+                event_bus.notify_workflow_updated(doc_id)
             else:
                 event_bus.notify_data_changed()
 

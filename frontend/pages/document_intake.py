@@ -27,6 +27,7 @@ from services.document_service import document_service
 from services.ocr_service import ocr_service
 from services.routing_service import routing_service
 from components.ocr_splash_dialog import OCRSplashDialog
+from components.busy_dialog import BusyDialog
 
 
 class DocumentIntakePage(QWidget):
@@ -169,6 +170,7 @@ class DocumentIntakePage(QWidget):
 
         self.title_input = QLineEdit()
         self.title_input.setPlaceholderText("Enter document title / subject")
+        self.title_input.setMaxLength(255)  # database column size
 
         self.ref_input = QLineEdit()
         self.ref_input.setPlaceholderText("Auto-generated reference number")
@@ -360,7 +362,7 @@ class DocumentIntakePage(QWidget):
             self,
             "Select Intake Document",
             "",
-            "Documents (*.pdf *.docx *.png *.jpg *.jpeg *.txt);;All Files (*)"
+            "Documents (*.pdf *.docx *.png *.jpg *.jpeg *.tif *.tiff *.bmp *.txt);;All Files (*)"
         )
         if not file_path:
             return
@@ -461,7 +463,10 @@ class DocumentIntakePage(QWidget):
         emp = ocr_result.get("suggested_employee") or ""
 
         d_idx = -1
-        if dept and dept not in ("Not Specified", "None", ""):
+        dept_id = ocr_result.get("suggested_department_id")
+        if dept_id is not None:
+            d_idx = self.dept_combo.findData(dept_id)
+        if d_idx < 0 and dept and dept not in ("Not Specified", "None", ""):
             d_idx = self.dept_combo.findText(dept, Qt.MatchFixedString)
             if d_idx < 0:
                 alias_map = {
@@ -485,7 +490,10 @@ class DocumentIntakePage(QWidget):
             self._load_employees_from_backend(department_id=selected_dept_id)
 
         e_idx = -1
-        if emp and emp not in ("Not Assigned", "None", ""):
+        emp_id = ocr_result.get("suggested_employee_id")
+        if emp_id is not None:
+            e_idx = self.emp_combo.findData(emp_id)
+        if e_idx < 0 and emp and emp not in ("Not Assigned", "None", ""):
             for i in range(self.emp_combo.count()):
                 if emp.lower() in self.emp_combo.itemText(i).lower():
                     e_idx = i
@@ -495,11 +503,23 @@ class DocumentIntakePage(QWidget):
         else:
             self.emp_combo.setCurrentIndex(0)
 
-        if self.extracted_ocr_confidence > 0:
-            conf_pct_disp = round(self.extracted_ocr_confidence * 100)
-            self.confidence_label.setText(f"Confidence: {conf_pct_disp}% • Source: Document / OCR")
+        # Two different numbers: how well the text was read, and how well the
+        # suggested department matches it.
+        ocr_part = (
+            f"OCR confidence: {round(self.extracted_ocr_confidence * 100)}%"
+            if self.extracted_ocr_confidence > 0 else "OCR confidence: —"
+        )
+        match = ocr_result.get("department_match")
+        if d_idx > 0 and match is not None:
+            try:
+                dept_part = f"Department match: {round(float(match) * 100)}%"
+            except (TypeError, ValueError):
+                dept_part = "Department suggested from the document"
+        elif d_idx > 0:
+            dept_part = "Department suggested from the document"
         else:
-            self.confidence_label.setText("Confidence: — • Source: Document / OCR")
+            dept_part = "No department match found - please choose one"
+        self.confidence_label.setText(f"{ocr_part} • {dept_part}")
 
         pages = ocr_result.get("pages_extracted", 1)
         is_hw = ocr_result.get("is_handwritten", False)
@@ -620,66 +640,90 @@ class DocumentIntakePage(QWidget):
         received = self.date_input.text().strip() or datetime.now().strftime("%Y-%m-%d")
         deadline = self.deadline_input.text().strip() or None
 
-        try:
-            if self.current_inbox_item_id:
-                # Arrived by mail: convert the intake record into a document.
-                created_doc = document_service.process_intake(
-                    self.current_inbox_item_id,
-                    {
-                        "title": title,
-                        "subject": title,
-                        "priority": PriorityEnum.normalize(self.priority_input.currentText()),
-                        "source": self.source_input.text().strip() or None,
-                        "sender_name": self.source_input.text().strip() or None,
-                        "sender_reference": self.ref_input.text().strip() or None,
-                        "received_date": received,
-                        "deadline": deadline,
-                    },
+        inbox_item_id = self.current_inbox_item_id
+        if inbox_item_id:
+            # Arrived by mail: convert the intake record into a document.
+            intake_payload = {
+                "title": title,
+                "subject": title,
+                "priority": PriorityEnum.normalize(self.priority_input.currentText()),
+                "source": self.source_input.text().strip() or None,
+                "sender_name": self.source_input.text().strip() or None,
+                "sender_reference": self.ref_input.text().strip() or None,
+                "received_date": received,
+                "deadline": deadline,
+            }
+        else:
+            if not actual_upload_path:
+                QMessageBox.warning(
+                    self,
+                    "Register Document",
+                    "Attach the document file before registering.",
                 )
-                self.current_inbox_item_id = None
+                return
+            fields = {
+                "title": title,
+                "subject": title,
+                "received_date": received,
+                "mode": IngestionModeEnum.normalize(self.mode_input.currentText())
+                or "MANUAL_UPLOAD",
+                "priority": PriorityEnum.normalize(self.priority_input.currentText()),
+                "source": self.source_input.text().strip() or "External",
+                "sender_name": self.source_input.text().strip() or "",
+                "sender_reference": self.ref_input.text().strip() or "",
+                "ocr_text": self.extracted_ocr_text or "",
+                "confidence": str(getattr(self, "extracted_ocr_confidence", 0.0) or 0.0),
+            }
+            intake_fields = self._intake_ocr_fields()
+            if intake_fields:
+                fields["ocr_fields"] = json.dumps(intake_fields, default=str)
+            if deadline:
+                fields["deadline"] = deadline
+            if target_dept_id:
+                fields["suggested_department_id"] = str(target_dept_id)
+            if emp_id:
+                fields["suggested_employee_id"] = str(emp_id)
+
+        def register():
+            """Runs on a worker thread: upload, OCR on the server, register."""
+            if inbox_item_id:
+                doc = document_service.process_intake(inbox_item_id, intake_payload)
             else:
-                if not actual_upload_path:
-                    QMessageBox.warning(
-                        self,
-                        "Register Document",
-                        "Attach the document file before registering.",
-                    )
-                    return
-                fields = {
-                    "title": title,
-                    "subject": title,
-                    "received_date": received,
-                    "mode": IngestionModeEnum.normalize(self.mode_input.currentText())
-                    or "MANUAL_UPLOAD",
-                    "priority": PriorityEnum.normalize(self.priority_input.currentText()),
-                    "source": self.source_input.text().strip() or "External",
-                    "sender_name": self.source_input.text().strip() or "",
-                    "sender_reference": self.ref_input.text().strip() or "",
-                    "ocr_text": self.extracted_ocr_text or "",
-                    "confidence": str(getattr(self, "extracted_ocr_confidence", 0.0) or 0.0),
-                }
-                intake_fields = self._intake_ocr_fields()
-                if intake_fields:
-                    fields["ocr_fields"] = json.dumps(intake_fields, default=str)
-                if deadline:
-                    fields["deadline"] = deadline
-                if target_dept_id:
-                    fields["suggested_department_id"] = str(target_dept_id)
-                if emp_id:
-                    fields["suggested_employee_id"] = str(emp_id)
+                doc = document_service.manual_upload(fields, actual_upload_path)
+            if not doc:
+                raise RuntimeError("The server did not return the new document.")
+            try:
+                document_service.register_document(doc.id)
+            except Exception as exc:
+                # Saved but not registered: report it instead of letting the
+                # DS upload the same file again (which would duplicate it).
+                return doc, exc
+            return (document_service.get_document(doc.id) or doc), None
 
-                created_doc = document_service.manual_upload(fields, actual_upload_path)
-
-            if not created_doc:
-                raise RuntimeError("The document could not be registered.")
-
-            document_service.register_document(created_doc.id)
-            created_doc = document_service.get_document(created_doc.id) or created_doc
-
+        try:
+            created_doc, register_error = BusyDialog.run(
+                self,
+                "Registering Document",
+                "Uploading the document and reading it on the server. "
+                "A large scanned document can take a minute.",
+                register,
+            )
         except Exception as ex:
             QMessageBox.critical(
                 self, "Intake Error", f"Could not register the document.\n{ex}"
             )
+            return
+
+        self.current_inbox_item_id = None
+        if register_error is not None:
+            QMessageBox.warning(
+                self,
+                "Register Document",
+                f"{created_doc.reference} was saved, but registering it failed:\n"
+                f"{register_error}\n\nOpen it from the Documents page to finish.",
+            )
+            self.clear_form()
+            self.document_processed.emit(created_doc)
             return
 
         QMessageBox.information(
@@ -695,7 +739,10 @@ class DocumentIntakePage(QWidget):
             dialog = RoutingDialog(created_doc, self)
             if dialog.exec() == dialog.DialogCode.Accepted:
                 branches = dialog.get_branches()
-                routing_service.route(created_doc.id, branches, created_doc.version)
+                BusyDialog.run(
+                    self, "Routing Document", "Opening the workstreams...",
+                    lambda: routing_service.route(created_doc.id, branches, created_doc.version),
+                )
                 QMessageBox.information(
                     self,
                     "Routed",

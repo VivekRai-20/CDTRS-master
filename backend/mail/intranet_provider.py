@@ -48,6 +48,13 @@ from .base import (
 
 logger = logging.getLogger("cdtrs.mail.intranet")
 
+# Network timeout (seconds) for IMAP.  Without one, an unreachable mail
+# server blocks the mailbox sync for minutes.
+try:
+    _IMAP_TIMEOUT = float(os.getenv("IMAP_TIMEOUT", "20"))
+except ValueError:
+    _IMAP_TIMEOUT = 20.0
+
 
 def _env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -247,6 +254,7 @@ class IntranetMailProvider(BaseMailProvider):
                     self.imap_host,
                     self.imap_port,
                     ssl_context=context,
+                    timeout=_IMAP_TIMEOUT,
                 )
 
             elif self.imap_security == "starttls":
@@ -254,6 +262,7 @@ class IntranetMailProvider(BaseMailProvider):
                 client = imaplib.IMAP4(
                     self.imap_host,
                     self.imap_port,
+                    timeout=_IMAP_TIMEOUT,
                 )
 
                 context = self._create_ssl_context()
@@ -267,6 +276,7 @@ class IntranetMailProvider(BaseMailProvider):
                 client = imaplib.IMAP4(
                     self.imap_host,
                     self.imap_port,
+                    timeout=_IMAP_TIMEOUT,
                 )
 
             else:

@@ -260,7 +260,11 @@ class MyTasksPage(QWidget):
 
     def _on_workflow_changed(self, *_) -> None:
         """Reload tasks when workflow/context changes."""
-        self.load_tasks()    
+        # Hidden pages reload in showEvent when they are opened; reloading
+        # every page on each server event froze the window.
+        if not self.isVisible():
+            return
+        self.load_tasks()
 
     def add_progress(self) -> None:
         item = self.selected_item()

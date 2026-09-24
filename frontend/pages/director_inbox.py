@@ -250,4 +250,8 @@ class DirectorInboxPage(QWidget):
     def _on_workflow_changed(self, *_) -> None:
         """Bound method, not a lambda: Qt disconnects this when the
         widget is destroyed, so a stale page never reloads itself."""
+        # Hidden pages reload in showEvent when they are opened; reloading
+        # every page on each server event froze the window.
+        if not self.isVisible():
+            return
         self.load()

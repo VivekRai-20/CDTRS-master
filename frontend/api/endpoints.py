@@ -73,6 +73,9 @@ class Endpoints:
     OCR_VERIFY = staticmethod(lambda doc_id: f"/documents/{doc_id}/verify-field")
     ROUTING_SUGGESTION = staticmethod(lambda doc_id: f"/documents/{doc_id}/routing-suggestion")
     ROUTING_ANALYZE = staticmethod(lambda doc_id: f"/documents/{doc_id}/analyze-routing")
+    # Intake analysis before a document exists (OCR runs on the server)
+    INTELLIGENCE_ANALYZE = "/intelligence/analyze"
+    INTELLIGENCE_ANALYZE_TEXT = "/intelligence/analyze-text"
 
     # --- Notifications & reminders ---
     NOTIFICATIONS_LIST = "/notifications"

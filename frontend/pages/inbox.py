@@ -78,14 +78,14 @@ class InboxPage(QWidget):
 
             try:
                 event_bus.inbox_updated.connect(
-                    self.load_documents
+                    self._on_bus_refresh
                 )
             except Exception:
                 pass
 
             try:
                 event_bus.data_changed.connect(
-                    self.load_documents
+                    self._on_bus_refresh
                 )
             except Exception:
                 pass
@@ -100,6 +100,12 @@ class InboxPage(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         self.load_documents()
+
+    def _on_bus_refresh(self, *_) -> None:
+        """Server event: reload only when the inbox is on screen (it reloads
+        itself in showEvent when opened)."""
+        if self.isVisible():
+            self.load_documents()
 
     # ================================================================
     # MAIN UI
@@ -2543,7 +2549,15 @@ class InboxPage(QWidget):
 
             repo = get_repository()
 
-            result = repo.sync_outlook()
+            # The server talks to the mail system; keep the window responsive.
+            from components.busy_dialog import BusyDialog
+
+            result = BusyDialog.run(
+                self,
+                "Mailbox Sync",
+                "Checking the mailbox for new documents...",
+                repo.sync_outlook,
+            )
 
             if not isinstance(
                 result,

@@ -13,10 +13,21 @@ Every mutating endpoint takes the caller's active work context from the
 X-Work-Context-Id header; the workflow engine decides what that context may do.
 """
 
+import warnings
+
+# requests 2.32.3 warns about the installed chardet 7.x / urllib3 2.7 at import
+# time.  Both work with it; the versions are fixed by the deployment, so the
+# warning is silenced before anything imports requests.
+warnings.filterwarnings(
+    "ignore", message=r"urllib3 \(.*\) or chardet \(.*\)/charset_normalizer \(.*\) doesn't match a supported version"
+)
+
 import asyncio
 import json
 import os
 import sys
+import threading
+import uuid
 from contextlib import asynccontextmanager
 from datetime import date as _date, datetime
 from pathlib import Path
@@ -97,8 +108,22 @@ MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", 20 * 1024 * 1024))
 
 ALLOWED_EXTENSIONS = {
     ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".png", ".jpg", ".jpeg",
-    ".txt", ".csv", ".zip",
+    ".tif", ".tiff", ".bmp", ".webp", ".txt", ".csv", ".zip",
 }
+
+# File types the OCR engine can read (desktop intake analysis).
+OCR_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".docx", ".txt"}
+
+
+def _parse_priority(value: Optional[str]) -> Priority:
+    """Accept any case / common aliases; unknown values fall back to MEDIUM
+    instead of failing the whole registration."""
+    text = str(value or "").strip().upper()
+    aliases = {"URGENT": "CRITICAL", "IMMEDIATE": "CRITICAL", "NORMAL": "MEDIUM", "ROUTINE": "LOW"}
+    try:
+        return Priority(aliases.get(text, text))
+    except ValueError:
+        return Priority.MEDIUM
 
 
 def _store_upload(doc_id: int, filename: str, contents: bytes) -> str:
@@ -128,6 +153,9 @@ def _validate_upload(file: UploadFile, contents: bytes) -> None:
 # LIFESPAN
 # =========================================================
 
+_MAIL_SYNC_LOCK = threading.Lock()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -145,18 +173,37 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[STARTUP WARN] {e}", flush=True)
 
+    # Mail sync and reminders do blocking network / database work.  They run
+    # in worker threads so they never stall the event loop (which serves
+    # every request and keeps the WebSocket connections alive).
+    def _mailbox_sync_once():
+        if not _MAIL_SYNC_LOCK.acquire(blocking=False):
+            return  # a sync (periodic or manual) is already running
+        try:
+            from database import SessionLocal
+            from mail.service import mail_service
+            db = SessionLocal()
+            try:
+                if mail_service.is_configured():
+                    mail_service.sync_ds_mailbox(db)
+            finally:
+                db.close()
+        finally:
+            _MAIL_SYNC_LOCK.release()
+
+    def _reminders_once():
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            workflow.generate_deadline_reminders(db)
+        finally:
+            db.close()
+
     async def _periodic_mailbox_sync():
         while True:
             try:
                 await asyncio.sleep(30)
-                from database import SessionLocal
-                from mail.service import mail_service
-                db = SessionLocal()
-                try:
-                    if mail_service.is_configured():
-                        mail_service.sync_ds_mailbox(db)
-                finally:
-                    db.close()
+                await asyncio.to_thread(_mailbox_sync_once)
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -166,16 +213,15 @@ async def lifespan(app: FastAPI):
         while True:
             try:
                 await asyncio.sleep(3600)
-                from database import SessionLocal
-                db = SessionLocal()
-                try:
-                    workflow.generate_deadline_reminders(db)
-                finally:
-                    db.close()
+                await asyncio.to_thread(_reminders_once)
             except asyncio.CancelledError:
                 break
             except Exception:
                 pass
+
+    # Load the OCR / embedding models in the background so the first upload
+    # does not have to wait for them.
+    threading.Thread(target=intelligence.warm_up_ocr_engine, name="ocr-warm-up", daemon=True).start()
 
     sync_task = asyncio.create_task(_periodic_mailbox_sync())
     reminder_task = asyncio.create_task(_periodic_reminders())
@@ -301,8 +347,13 @@ async def websocket_endpoint(websocket: WebSocket):
     await crud.event_manager.connect(websocket)
     try:
         while True:
+            # Client heartbeats keep the connection active; nothing to reply.
             await websocket.receive_text()
     except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
         crud.event_manager.disconnect(websocket)
 
 
@@ -464,7 +515,8 @@ def sync_outlook(
     if not ctx or ctx.context_type != WorkContextType.DS:
         raise HTTPException(status_code=403, detail="Mailbox sync is a DS action.")
     from mail.service import mail_service
-    return mail_service.sync_ds_mailbox(db)
+    with _MAIL_SYNC_LOCK:
+        return mail_service.sync_ds_mailbox(db)
 
 
 @app.post(
@@ -522,7 +574,7 @@ async def manual_upload(
             sender_name=sender_name,
             sender_reference=sender_reference,
             mode=mode,
-            priority=Priority(priority),
+            priority=_parse_priority(priority),
         ),
         created_by=current_user.id,
         context_id=ctx.id,
@@ -565,6 +617,55 @@ async def manual_upload(
     await crud.event_manager.broadcast("DOCUMENT_CREATED", document_id=doc.doc_id, user_id=current_user.id)
     db.refresh(doc)
     return serializers.document_detail(db, doc)
+
+
+# ---------------------------------------------------------------------------
+# Intake analysis (desktop intake form pre-fill).  The desktop app sends the
+# file here instead of running the OCR models itself: one OCR engine, loaded
+# once, on the server.  Nothing is stored.
+# ---------------------------------------------------------------------------
+
+@app.post(f"{API_V1}/intelligence/analyze", tags=["OCR"])
+def analyze_intake_file(
+    file: UploadFile = File(...),
+    body: Optional[str] = Form(default=None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+    ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
+):
+    if not ctx or ctx.context_type != WorkContextType.DS:
+        raise HTTPException(status_code=403, detail="Document intake is a DS action.")
+    contents = file.file.read()
+    _validate_upload(file, contents)
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in OCR_EXTENSIONS:
+        return {"success": False, "error": f"'{ext}' files cannot be read by OCR."}
+
+    tmp_dir = UPLOAD_DIR / "_analysis"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / f"{uuid.uuid4().hex}{ext}"
+    try:
+        with open(tmp_path, "wb") as fh:
+            fh.write(contents)
+        return intelligence.analyze_document_file(db, str(tmp_path), extra_text=body or "")
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+
+
+@app.post(f"{API_V1}/intelligence/analyze-text", tags=["OCR"])
+def analyze_intake_text(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+    ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
+):
+    if not ctx or ctx.context_type != WorkContextType.DS:
+        raise HTTPException(status_code=403, detail="Document intake is a DS action.")
+    text = str((payload or {}).get("text") or "")[:200_000]
+    return intelligence.analyze_text(db, text)
 
 
 @app.post(
@@ -1239,6 +1340,10 @@ async def review_work(
         )
     except Exception as exc:
         raise _handle(exc)
+    item = db.query(models.WorkItem).filter(models.WorkItem.id == work_item_id).first()
+    await crud.event_manager.broadcast(
+        "WORK_REVIEWED", document_id=item.document_id if item else None, user_id=current_user.id
+    )
     return serializers.work_review(review)
 
 
@@ -1291,6 +1396,9 @@ async def upload_attachment(
         checksum=crud.compute_checksum(contents),
         attachment_type=AttachmentType(attachment_type),
         context_id=_context_id(ctx),
+    )
+    await crud.event_manager.broadcast(
+        "ATTACHMENT_ADDED", document_id=document_id, user_id=current_user.id
     )
     return serializers.attachment(att)
 

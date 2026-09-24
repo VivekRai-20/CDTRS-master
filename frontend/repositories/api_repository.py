@@ -28,6 +28,12 @@ from models.user import ContextMembershipModel
 from repositories.base import BaseRepository
 from models.notification import NotificationModel, ReminderModel
 
+#: Calls where the server runs OCR / model inference (seconds).  The default
+#: request timeout is far too short for a multi-page scan.
+OCR_TIMEOUT = 600.0
+#: Mail synchronisation and other slow server work (seconds).
+LONG_TIMEOUT = 180.0
+
 
 class APIRepository(BaseRepository):
     def __init__(self, client: Optional[APIClient] = None):
@@ -135,15 +141,31 @@ class APIRepository(BaseRepository):
         return self.get_intake_items()
 
     def sync_outlook(self) -> Dict[str, Any]:
-        return self.client.post(Endpoints.INTAKE_SYNC_OUTLOOK) or {}
+        return self.client.post(Endpoints.INTAKE_SYNC_OUTLOOK, timeout=LONG_TIMEOUT) or {}
 
     def process_intake(self, intake_id: int, payload: Dict[str, Any]) -> Optional[DocumentModel]:
-        data = self.client.post(Endpoints.INTAKE_PROCESS(intake_id), json=payload)
+        # The server OCRs the e-mail attachment while registering it.
+        data = self.client.post(Endpoints.INTAKE_PROCESS(intake_id), json=payload, timeout=OCR_TIMEOUT)
         return DocumentModel.from_dict(data) if data else None
 
     def manual_upload(self, fields: Dict[str, Any], file_path: str) -> Optional[DocumentModel]:
-        data = self.client.upload(Endpoints.INTAKE_MANUAL_UPLOAD, file_path=file_path, extra_data=fields)
+        data = self.client.upload(
+            Endpoints.INTAKE_MANUAL_UPLOAD, file_path=file_path, extra_data=fields, timeout=OCR_TIMEOUT
+        )
         return DocumentModel.from_dict(data) if data else None
+
+    def analyze_intake_file(self, file_path: str, body: str = "") -> Dict[str, Any]:
+        """OCR + routing suggestion for a file that is not registered yet."""
+        extra = {"body": body} if body else None
+        return self.client.upload(
+            Endpoints.INTELLIGENCE_ANALYZE, file_path=file_path, extra_data=extra, timeout=OCR_TIMEOUT
+        ) or {}
+
+    def analyze_intake_text(self, text: str) -> Dict[str, Any]:
+        """Field extraction + routing suggestion for text only (e-mail body)."""
+        return self.client.post(
+            Endpoints.INTELLIGENCE_ANALYZE_TEXT, json={"text": text}, timeout=LONG_TIMEOUT
+        ) or {}
 
     # =========================================================
     # DOCUMENTS
@@ -326,7 +348,8 @@ class APIRepository(BaseRepository):
         if new_stage:
             fields["new_stage"] = new_stage
         data = self.client.upload(
-            Endpoints.WORK_ITEM_PROGRESS_FILE(work_item_id), file_path=file_path, extra_data=fields
+            Endpoints.WORK_ITEM_PROGRESS_FILE(work_item_id), file_path=file_path, extra_data=fields,
+            timeout=LONG_TIMEOUT,
         )
         return ProgressModel.from_dict(data) if data else None
 
@@ -361,11 +384,13 @@ class APIRepository(BaseRepository):
         fields: Dict[str, Any] = {"attachment_type": attachment_type}
         if progress_update_id:
             fields["progress_update_id"] = progress_update_id
-        data = self.client.upload(Endpoints.ATTACHMENT_UPLOAD(doc_id), file_path=file_path, extra_data=fields)
+        data = self.client.upload(
+            Endpoints.ATTACHMENT_UPLOAD(doc_id), file_path=file_path, extra_data=fields, timeout=LONG_TIMEOUT
+        )
         return AttachmentModel.from_dict(data) if data else None
 
     def download_attachment(self, attachment_id: int, dest_path: str) -> Optional[str]:
-        return self.client.download(Endpoints.ATTACHMENT_DOWNLOAD(attachment_id), dest_path)
+        return self.client.download(Endpoints.ATTACHMENT_DOWNLOAD(attachment_id), dest_path, timeout=LONG_TIMEOUT)
 
     # =========================================================
     # HISTORY & REMARKS
@@ -391,7 +416,7 @@ class APIRepository(BaseRepository):
         return self.client.get(Endpoints.OCR_GET(doc_id)) or {}
 
     def trigger_ocr(self, doc_id: int) -> Dict[str, Any]:
-        return self.client.post(Endpoints.OCR_RUN(doc_id)) or {}
+        return self.client.post(Endpoints.OCR_RUN(doc_id), timeout=OCR_TIMEOUT) or {}
 
     def verify_field(self, doc_id: int, field_name: str, verified_value: str) -> Dict[str, Any]:
         return self.client.post(

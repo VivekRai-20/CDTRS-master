@@ -94,7 +94,7 @@ The backend is doing all the heavy lifting and returning rich intelligent data, 
 ### Task E: Upgrade Frontend Intake to Use the New OCR Pipeline (DONE)
 **Status**: Completed. The frontend intake OCR now runs on `OCR_new`, and the old `OCR_old/` folder has been removed.
 
-**What was done** (Option B, local):
-- Added `frontend/services/ocr_adapter.py`, a thin bridge over `OCR_new`'s `DocumentProcessor` (the frontend counterpart of `backend/ocr_adapter.py`). It puts `OCR_new/` on `sys.path` right after the frontend directory (so the frontend's own `api`/`config`/`models` packages keep precedence), shares one processor instance, and maps `DocumentResult` onto the keys `ocr_service.py` already reads (`raw_text`, `confidence`, `is_handwritten`, `pages_processed`, `fields`, `department_suggestion`).
-- `frontend/services/ocr_service.py` now imports the engine from that adapter instead of `OCR/ocr.py` + `OCR/rules.py`. The service's own logic (fallbacks, priority/date normalisation, Director remark detection, returned keys) is unchanged.
-- Field extraction patterns now come from `OCR_new/extraction/patterns.yaml`; the suggested department on the intake form comes from the `department` / `departments` fields OCR_new extracts. Semantic department ranking remains in the backend (`backend/intelligence.py`), also on `OCR_new`.
+**What was done** (Option A, server-side OCR):
+- The desktop app no longer loads PaddleOCR / torch. `frontend/services/ocr_adapter.py` sends the selected file to the backend (`POST /api/v1/intelligence/analyze`, text only: `POST /api/v1/intelligence/analyze-text`), which runs OCR_new once, on the server, and returns text, fields, handwriting / Director detection and a department + staff suggestion. Nothing is stored until the DS registers the document.
+- Department suggestions (`backend/intelligence.py: rank_departments`) combine keyword evidence (department name/code, a topic lexicon keyed on department names, OCR-extracted "Department:" lines, staff named in the text) with semantic similarity from OCR_new's local embedding model, matched against the departments in the database.
+- Registration, mailbox sync and routing from the intake page run on a worker thread (`frontend/components/busy_dialog.py`), so the window never shows "Not Responding".

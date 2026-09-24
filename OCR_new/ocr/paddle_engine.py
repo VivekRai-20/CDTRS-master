@@ -80,16 +80,37 @@ class PaddleEngine(BaseOCREngine):
         root = Path(__file__).resolve().parents[1]
 
         def abs_path(rel: str) -> str:
+            """Absolute model dir, only if it actually holds model files.
+
+            PaddleOCR 2.x downloads into an empty model dir, which fails
+            offline; with no dir given it uses its own ~/.paddleocr cache.
+            """
             p = Path(rel)
             full = root / p if not p.is_absolute() else p
-            return str(full) if full.exists() else None
+            if not full.is_dir():
+                return None
+            has_model = any(
+                f.suffix.lower() in (".pdmodel", ".pdiparams") for f in full.iterdir()
+            )
+            return str(full) if has_model else None
 
         det_dir = abs_path(paddle_cfg.get("det_model_dir", "models/paddleocr/det"))
         rec_dir = abs_path(paddle_cfg.get("rec_model_dir", "models/paddleocr/rec"))
         cls_dir = abs_path(paddle_cfg.get("cls_model_dir", "models/paddleocr/cls"))
 
         # --- Get valid constructor params for this version -----------------
-        valid_params = set(inspect.signature(PaddleOCR.__init__).parameters.keys()) - {"self"}
+        sig_params = inspect.signature(PaddleOCR.__init__).parameters
+        valid_params = set(sig_params.keys()) - {"self", "kwargs", "args"}
+        if self._major_version < 3 and any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig_params.values()
+        ):
+            # PaddleOCR 2.x takes everything through **kwargs (argparse names).
+            valid_params |= {
+                "use_gpu", "use_angle_cls", "show_log", "ocr_version",
+                "det_model_dir", "rec_model_dir", "cls_model_dir",
+                "det_db_thresh", "det_db_box_thresh", "det_db_unclip_ratio",
+                "det_limit_side_len", "det_limit_type", "drop_score",
+            }
 
         # --- Build kwargs --------------------------------------------------
         lang        = paddle_cfg.get("lang", "en")
@@ -133,11 +154,30 @@ class PaddleEngine(BaseOCREngine):
         else:
             # PaddleOCR 2.x parameter names
             if "use_angle_cls" in valid_params:
-                kwargs["use_angle_cls"] = paddle_cfg.get("use_angle_cls", True)
+                kwargs["use_angle_cls"] = paddle_cfg.get(
+                    "use_angle_cls", paddle_cfg.get("use_textline_orientation", True)
+                )
             if "show_log" in valid_params:
                 kwargs["show_log"] = paddle_cfg.get("show_log", False)
             if "download_font" in valid_params:
                 kwargs["download_font"] = False
+            # 2.x only knows PP-OCR up to v4 (v5 is a 3.x model family).
+            if "ocr_version" in valid_params and ocr_version:
+                kwargs["ocr_version"] = ocr_version if ocr_version in (
+                    "PP-OCR", "PP-OCRv2", "PP-OCRv3", "PP-OCRv4"
+                ) else "PP-OCRv4"
+            # Same detection tuning as the 3.x settings in config.yaml.
+            for cfg_key, arg, cast in (
+                ("text_det_thresh", "det_db_thresh", float),
+                ("text_det_box_thresh", "det_db_box_thresh", float),
+                ("text_det_unclip_ratio", "det_db_unclip_ratio", float),
+                ("text_det_limit_side_len", "det_limit_side_len", int),
+                ("text_det_limit_type", "det_limit_type", str),
+            ):
+                if arg in valid_params and cfg_key in paddle_cfg:
+                    kwargs[arg] = cast(paddle_cfg[cfg_key])
+            if "drop_score" in valid_params and "drop_score" in paddle_cfg:
+                kwargs["drop_score"] = float(paddle_cfg["drop_score"])
             if det_dir and "det_model_dir" in valid_params:
                 kwargs["det_model_dir"] = det_dir
             if rec_dir and "rec_model_dir" in valid_params:

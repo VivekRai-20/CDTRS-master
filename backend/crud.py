@@ -10,11 +10,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from datetime import datetime, timedelta, date
 from typing import Any, Dict, List, Optional
 
 import bcrypt
 from jose import jwt
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
@@ -507,15 +509,35 @@ def generate_reference_no(db: Session) -> str:
     return f"{prefix}{str(max_num + 1).zfill(4)}"
 
 
+#: Serialises reference-number allocation inside this server process.
+_REFERENCE_LOCK = threading.Lock()
+
+
+def _fit(value: Any, column) -> Any:
+    """Trim text to the column's length.  OCR-derived values (a long subject
+    line, a sender block) must not make the database reject the document."""
+    if value is None or not isinstance(value, str):
+        return value
+    value = value.strip()
+    length = getattr(getattr(column, "type", None), "length", None)
+    if length and len(value) > length:
+        value = value[: max(0, length - 1)].rstrip() + "…"
+    return value
+
+
+def _fit_document_fields(values: Dict[str, Any]) -> Dict[str, Any]:
+    columns = models.Document.__table__.columns
+    return {k: (_fit(v, columns[k]) if k in columns else v) for k, v in values.items()}
+
+
 def create_document(
     db: Session,
     doc: schemas.DocumentCreate,
     created_by: int,
     context_id: Optional[int] = None,
 ) -> models.Document:
-    db_doc = models.Document(
-        reference_no=generate_reference_no(db),
-        title=doc.title,
+    values = _fit_document_fields(dict(
+        title=(doc.title or "").strip() or "Untitled document",
         subject=doc.subject,
         description=doc.description,
         received_date=doc.received_date,
@@ -523,16 +545,27 @@ def create_document(
         source=doc.source,
         sender_name=doc.sender_name,
         sender_reference=doc.sender_reference,
-        mode=doc.mode,
+        mode=doc.mode or "MANUAL_UPLOAD",
         priority=doc.priority,
         lifecycle=models.DocumentLifecycle.RECEIVED,
         created_by=created_by,
         source_message_id=doc.source_message_id,
         ocr_status=OCRStatus.NONE,
         version=1,
-    )
-    db.add(db_doc)
-    db.commit()
+    ))
+    # Two registrations at the same moment could compute the same next
+    # reference number; retry with a fresh number instead of failing.
+    with _REFERENCE_LOCK:
+        for attempt in range(5):
+            db_doc = models.Document(reference_no=generate_reference_no(db), **values)
+            db.add(db_doc)
+            try:
+                db.commit()
+                break
+            except IntegrityError:
+                db.rollback()
+                if attempt == 4:
+                    raise
     db.refresh(db_doc)
 
     actor = get_user_by_id(db, created_by)
@@ -581,6 +614,7 @@ def update_document_metadata(
         new_value = getattr(payload, field, None)
         if new_value is None:
             continue
+        new_value = _fit(new_value, models.Document.__table__.columns[field])
         old_value = getattr(doc, field)
         if old_value != new_value:
             setattr(doc, field, new_value)

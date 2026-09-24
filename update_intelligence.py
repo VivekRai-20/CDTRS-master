@@ -1,3 +1,12 @@
+"""OBSOLETE one-off patch script - do not run.
+
+It rewrote backend/intelligence.py with an early version of the routing /
+OCR functions (which had the Attachment.file_path and unsorted-ranking bugs).
+Those functions have since been fixed in backend/intelligence.py itself;
+running this script would put the old bugs back.  Kept only for reference.
+"""
+raise SystemExit("update_intelligence.py is obsolete; backend/intelligence.py already contains the fixed code.")
+
 import ast
 with open('backend/intelligence.py', 'r') as f:
     code = f.read()

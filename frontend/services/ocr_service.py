@@ -101,6 +101,38 @@ def _detect_director_remark(text: str):
 
 
 # ---------------------------------------------------------------------------
+# Document format detection (values of the intake "Document Format" list)
+# ---------------------------------------------------------------------------
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".gif"}
+
+
+def _pdf_has_text_layer(file_path: str) -> bool:
+    """True for a digital PDF, False for a scan (pages are only images)."""
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(file_path)
+        for page in reader.pages[:3]:
+            if (page.extract_text() or "").strip():
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _detect_format(file_path: str, body_text: str = "") -> str:
+    if not file_path:
+        return "Email Body" if body_text else "Other"
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".pdf":
+        return "PDF" if _pdf_has_text_layer(file_path) else "Scanned PDF"
+    if ext in (".docx", ".doc"):
+        return "DOCX"
+    if ext in _IMAGE_EXTS:
+        return "Image (PNG/JPG)"
+    return "Other"
+
+
+# ---------------------------------------------------------------------------
 # Main OCR Service
 # ---------------------------------------------------------------------------
 
@@ -180,7 +212,10 @@ class OCRService:
         if _OCR_AVAILABLE and file_path and os.path.exists(file_path):
             try:
                 engine          = _DocumentOCR()
-                ocr_result      = engine.process(file_path)
+                try:
+                    ocr_result  = engine.process(file_path, body=body_text)
+                except TypeError:
+                    ocr_result  = engine.process(file_path)
                 raw_text        = ocr_result.get("raw_text", "")
                 confidence      = ocr_result.get("confidence", 0.0)
                 is_handwritten  = ocr_result.get("is_handwritten", False)
@@ -276,12 +311,23 @@ class OCRService:
             deadline = deadline[0] if deadline else ""
 
         # Suggested department from OCR engine
-        dept_suggestion = ocr_result.get("department_suggestion", {})
-        suggested_dept  = dept_suggestion.get("suggested", "")
+        dept_suggestion = ocr_result.get("department_suggestion") or {}
+        suggested_dept  = dept_suggestion.get("suggested") or ""
+        suggested_dept_id = dept_suggestion.get("department_id")
+        department_match = dept_suggestion.get("confidence") if suggested_dept else None
 
-        # Suggested employee is only populated if an employee name is explicitly extracted from the PDF text
-        raw_emp = ocr_fields.get("employee") or ocr_fields.get("signatory")
+        # Suggested employee: a staff member named in the document, else a
+        # name the extraction rules picked up.
+        raw_emp = (
+            ocr_result.get("suggested_employee")
+            or dept_suggestion.get("suggested_employee")
+            or ocr_fields.get("employee")
+            or ocr_fields.get("signatory")
+        )
+        if isinstance(raw_emp, list):
+            raw_emp = raw_emp[0] if raw_emp else None
         suggested_emp = raw_emp if (raw_emp and raw_emp not in ("Not Assigned", "None", "")) else None
+        suggested_emp_id = ocr_result.get("suggested_employee_id") or dept_suggestion.get("suggested_employee_id")
 
         # PZ_26/08: Dynamic extraction quality confidence scaling for digital files; neural score for PaddleOCR
         if not _OCR_AVAILABLE and confidence > 0:
@@ -292,11 +338,14 @@ class OCRService:
 
 
         # ---- 3.  Director remark detection ---------------------------
-        has_remark, remark_text = _detect_director_remark(combined_text)
-        if not has_remark and str(ocr_fields.get("prior_director_review_detected", "")).lower() == "true":
-            # OCR_new found a handwritten Director instruction on the page.
+        # A handwritten Director note found by OCR is the most reliable
+        # source; typed "Director remark: ..." lines are the fallback.
+        has_remark, remark_text = False, ""
+        if str(ocr_fields.get("prior_director_review_detected", "")).lower() == "true":
             remark_text = str(ocr_fields.get("director_handwritten_remark") or "").strip()
             has_remark  = bool(remark_text)
+        if not has_remark:
+            has_remark, remark_text = _detect_director_remark(combined_text)
         if not has_remark and incoming_item:
             if incoming_item.get("has_prior_director_remark"):
                 has_remark  = True
@@ -306,13 +355,12 @@ class OCRService:
                 remark_text = incoming_item["director_remark"]
 
         # ---- 4.  File format detection --------------------------------
-        if file_path:
-            ext = os.path.splitext(file_path)[1].upper().lstrip(".")
-            fmt = ext if ext else "PDF"
-        elif body_text:
-            fmt = "Email Body"
+        local_file = file_path if (file_path and os.path.exists(file_path)) else ""
+        declared = str((incoming_item or {}).get("format") or (incoming_item or {}).get("file_type") or "")
+        if not local_file and declared.lower().startswith("email"):
+            fmt = "Email Body"  # an e-mail from the inbox with no local file
         else:
-            fmt = "PDF"
+            fmt = _detect_format(local_file, body_text)
 
         # PZ_26/08 - Terminal Debug: Output OCR Results in Frontend Console
         print("\n" + "=" * 70, flush=True)
@@ -337,8 +385,8 @@ class OCRService:
         print(f"  - Deadline        : {deadline or 'Not Specified'}", flush=True)
         print(f"  - Suggested Dept  : {suggested_dept or 'None'}", flush=True)
         print(f"  - Suggested Staff : {suggested_emp or 'Not Assigned'}", flush=True)
-        if dept_suggestion:
-            print(f"  - Routing Score   : {dept_suggestion.get('score', 'N/A')}", flush=True)
+        if department_match is not None:
+            print(f"  - Routing Score   : {round(float(department_match) * 100)}%", flush=True)
         if has_remark:
             print(f"  - Director Remark : {remark_text}", flush=True)
         print("=" * 70 + "\n", flush=True)
@@ -360,7 +408,11 @@ class OCRService:
             "ocr_fields":                ocr_fields,
             # Routing
             "suggested_department":      suggested_dept,
+            "suggested_department_id":   suggested_dept_id,
+            "department_match":          department_match,
+            "ranked_departments":        dept_suggestion.get("ranked") or [],
             "suggested_employee":        suggested_emp,
+            "suggested_employee_id":     suggested_emp_id,
             "confidence":                round(confidence, 4) if confidence <= 1.0 else round(confidence / 100.0, 4),
             "confidence_pct":            conf_pct,
             # Director directive

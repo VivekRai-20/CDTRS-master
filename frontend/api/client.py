@@ -1,3 +1,11 @@
+import warnings
+
+# requests 2.32.3 warns about the installed chardet 7.x / urllib3 2.7 at import
+# time.  Both work with it; the versions are fixed by the deployment, so the
+# warning is silenced before anything imports requests.
+warnings.filterwarnings(
+    "ignore", message=r"urllib3 \(.*\) or chardet \(.*\)/charset_normalizer \(.*\) doesn't match a supported version"
+)
 import os
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
