@@ -1,0 +1,52 @@
+{
+  "enabled": true,
+  "embedding": null,
+  "keywords": [
+    {
+      "keyword": "KINETICS Chemical kinetics",
+      "score": 0.0016
+    },
+    {
+      "keyword": "CHEMICAL KINETICS Chemical",
+      "score": 0.0032
+    },
+    {
+      "keyword": "rate",
+      "score": 0.0032
+    },
+    {
+      "keyword": "reaction",
+      "score": 0.0058
+    },
+    {
+      "keyword": "Rate law",
+      "score": 0.0067
+    },
+    {
+      "keyword": "rate law Rate",
+      "score": 0.0078
+    },
+    {
+      "keyword": "CHEMICAL KINETICS",
+      "score": 0.0084
+    },
+    {
+      "keyword": "rate law reaction",
+      "score": 0.0119
+    },
+    {
+      "keyword": "affecting rate ard",
+      "score": 0.0142
+    },
+    {
+      "keyword": "factors affecting rate",
+      "score": 0.0142
+    }
+  ],
+  "classification": {
+    "label": "UNKNOWN",
+    "confidence": 0.0,
+    "categories": []
+  },
+  "similarities": []
+}

@@ -1,0 +1,118 @@
+# =============================================================================
+# Regex Pattern Definitions
+# =============================================================================
+# Each top-level key is a field name that will appear in extracted.json.
+# 
+# Keys under each field:
+#   patterns  : list of regex strings (tried in order; first match wins)
+#   flags     : optional list of re flag names — IGNORECASE, MULTILINE, DOTALL
+#   multiline : convenience alias for adding MULTILINE flag
+#   group     : capturing group index to return (default: 1)
+#               use 0 to return the entire match
+#
+# Tips for OCR text:
+#   - Use \s* liberally — OCR often inserts/drops spaces around punctuation
+#   - Use [:\-] to handle both colons and hyphens (OCR confusion)
+#   - Use (.+?) for greedy-but-short captures; (.+) for full-line captures
+# =============================================================================
+
+subject:
+  patterns:
+    - 'Subject\s*[:\-.]?\s*(.+)'
+    - 'Course\s*[:\-.]?\s*(.+)'
+    - 'Sub\s*[:\-.]?\s*(.+)'
+    - 'Subject\s*[:\-.]?\s*\n\s*([^\n]+)'
+  flags: [IGNORECASE]
+  group: 1
+
+title:
+  patterns:
+    - 'Title\s*[:\-.]?\s*(.+)'
+    - 'Topic\s*[:\-.]?\s*(.+)'
+    - 'Experiment\s*(?:Name|Title)\s*[:\-.]?\s*(.+)'
+    - 'Exp\s*(?:Name|Title)\s*[:\-.]?\s*(.+)'
+    - 'Title\s*[:\-.]?\s*\n\s*([^\n]+)'
+  flags: [IGNORECASE]
+  group: 1
+
+name:
+  patterns:
+    - '(?:Student\s*)?Name\s*[:\-.]?\s*([A-Za-z\s.]+?)(?=\r?\n|$)'
+    - 'Submitted\s*[Bb]y\s*[:\-.]?\s*([A-Za-z\s.]+?)(?=\r?\n|$)'
+    - 'Candidate\s*Name\s*[:\-.]?\s*([A-Za-z\s.]+?)(?=\r?\n|$)'
+    - '(?:Student\s*)?Name\s*[:\-.]?\s*\n\s*([^\n]+)'
+  flags: [IGNORECASE]
+  group: 1
+
+roll_no:
+  patterns:
+    - 'Roll\s*(?:No\.?|Number|Num\.?)\s*[:\-.]?\s*([A-Za-z0-9]+)'
+    - 'Roll\s*[:\-.]?\s*([A-Za-z0-9]+)'
+    - 'Enrollment\s*(?:No\.?|Number)?\s*[:\-.]?\s*([A-Za-z0-9]+)'
+    - 'Reg(?:istration)?\s*(?:No\.?|Number)?\s*[:\-.]?\s*([A-Za-z0-9]+)'
+    - 'Roll\s*(?:No\.?|Number|Num\.?)\s*[:\-.]?\s*\n\s*([A-Za-z0-9]+)'
+  flags: [IGNORECASE]
+  group: 1
+
+date:
+  patterns:
+    - '\b(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})\b'
+    - 'Date(?:\s*of\s*Submission)?\s*[:\-.]?\s*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})'
+    - 'Date(?:\s*of\s*Submission)?\s*[:\-.]?\s*(\d{1,2}\s+\w+\s+\d{2,4})'
+    - 'Date(?:\s*of\s*Submission)?\s*[:\-.]?\s*\n\s*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})'
+  flags: [IGNORECASE]
+  group: 1
+
+semester:
+  patterns:
+    - 'Semester\s*[:\-.]?\s*([A-Za-z0-9]+)'
+    - 'Sem\s*[:\-.]?\s*([A-Za-z0-9]+)'
+    - '(\d+(?:st|nd|rd|th))\s+Semester'
+    - 'Semester\s*[:\-.]?\s*\n\s*([A-Za-z0-9]+)'
+  flags: [IGNORECASE]
+  group: 1
+
+department:
+  patterns:
+    - 'Department\s*[:\-.]?\s*(.+)'
+    - 'Dept\.?\s*[:\-.]?\s*(.+)'
+    - 'Branch\s*[:\-.]?\s*(.+)'
+    - 'Department\s*[:\-.]?\s*\n\s*([^\n]+)'
+  flags: [IGNORECASE]
+  group: 1
+
+marks:
+  patterns:
+    - 'Marks?\s*(?:Obtained|Scored|Awarded)?\s*[:\-.]?\s*(\d+(?:\.\d+)?(?:\s*/\s*\d+)?)'
+    - 'Score\s*[:\-.]?\s*(\d+(?:\.\d+)?(?:\s*/\s*\d+)?)'
+    - 'Grade\s*[:\-.]?\s*([A-Za-z0-9+\-]+)'
+    - 'Marks?\s*(?:Obtained|Scored|Awarded)?\s*[:\-.]?\s*\n\s*(\d+(?:\.\d+)?(?:\s*/\s*\d+)?)'
+  flags: [IGNORECASE]
+  group: 1
+
+teacher:
+  patterns:
+    - '\b(?:Teacher|Faculty(?:\s*Incharge)?|Instructor|Prof(?:essor)?|Dr\.?)\s*(?:Name)?\s*[:\-.]?\s*([^\n]+)'
+    - 'Checked\s*[Bb]y\s*[:\-.]?\s*([^\n]+)'
+    - 'Verified\s*[Bb]y\s*[:\-.]?\s*([^\n]+)'
+    - '\b(?:Teacher|Faculty(?:\s*Incharge)?|Instructor)\s*[:\-.]?\s*\n\s*([^\n]+)'
+  flags: [IGNORECASE]
+  group: 1
+
+aim:
+  patterns:
+    - 'Aim\s*[:\-.]?\s*(.+)'
+    - 'Objective\s*[:\-.]?\s*(.+)'
+    - 'Purpose\s*[:\-.]?\s*(.+)'
+    - 'Aim\s*[:\-.]?\s*\n\s*([^\n]+)'
+  flags: [IGNORECASE]
+  group: 1
+
+experiment_no:
+  patterns:
+    - 'Experiment\s*(?:No\.?|Number)?\s*[:\-.]?\s*(\d+)'
+    - 'Exp\.?\s*(?:No\.?)?\s*[:\-.]?\s*(\d+)'
+    - '#\s*(\d+)'
+    - 'Experiment\s*(?:No\.?|Number)?\s*[:\-.]?\s*\n\s*(\d+)'
+  flags: [IGNORECASE]
+  group: 1

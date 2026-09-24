@@ -1,0 +1,158 @@
+/* =========================
+   GLOBAL
+   ========================= */
+
+QWidget {
+    font-family: "Segoe UI";
+    font-size: 14px;
+    background: #F5F7FA;
+    color: #1F2937;
+}
+
+
+/* =========================
+   LOGIN
+   ========================= */
+
+#loginCard {
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+}
+
+#loginTitle {
+    background-color: transparent;
+    font-size: 30px;
+    font-weight: bold;
+    color: #1E3A8A;
+}
+
+#loginSubtitle {
+    background-color: transparent;
+    color: #64748B;
+    font-size: 13px;
+}
+
+QLineEdit {
+    background: white;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 9px;
+}
+
+QLineEdit:focus {
+    border: 1px solid #2563EB;
+}
+
+QPushButton {
+    background: #2563EB;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 10px;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background: #1D4ED8;
+}
+
+
+/* =========================
+   SIDEBAR
+   ========================= */
+
+#sidebar {
+    background-color: #1E3A8A;
+    border: none;
+}
+
+#sidebar QLabel {
+    background-color: transparent;
+    background: transparent;
+}
+
+#sidebarTitle {
+    background-color: transparent;
+    color: white;
+    font-size: 22px;
+    font-weight: bold;
+}
+
+#sidebarUser {
+    background-color: transparent;
+    color: #E0E7FF;
+    font-size: 13px;
+    font-weight: normal;
+}
+
+
+#sidebarButton {
+    background-color: transparent;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 11px 12px;
+    text-align: left;
+    font-size: 14px;
+}
+
+#sidebarButton:hover {
+    background-color: #2563EB;
+}
+
+#sidebarButton:pressed {
+    background-color: #1D4ED8;
+}
+
+#logoutButton {
+    background-color: transparent;
+    color: #BFDBFE;
+    border: none;
+    border-radius: 6px;
+    padding: 11px 12px;
+    text-align: left;
+    font-size: 14px;
+}
+
+#logoutButton:hover {
+    background-color: #2563EB;
+}
+
+
+/* =========================
+   DASHBOARD / PAGES
+   ========================= */
+
+#pageTitle {
+    background-color: transparent;
+    color: #1F2937;
+    font-size: 26px;
+    font-weight: bold;
+}
+
+#pageSubtitle {
+    background-color: transparent;
+    color: #64748B;
+    font-size: 14px;
+}
+
+#contentCard {
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+}
+
+#sectionTitle {
+    background: transparent;
+    font-size: 16px;
+    font-weight: bold;
+    color: #1F2937;
+}
+
+#documentPreview {
+    background: #F8FAFC;
+    border: 1px dashed #CBD5E1;
+    border-radius: 8px;
+    color: #64748B;
+}

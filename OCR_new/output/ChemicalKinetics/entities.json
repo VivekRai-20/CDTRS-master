@@ -1,0 +1,18 @@
+[
+  {
+    "text": "2.303 109",
+    "label": "PHONE",
+    "start": 4868,
+    "end": 4877,
+    "confidence": 0.8,
+    "normalized_text": "2303109"
+  },
+  {
+    "text": "$ 0",
+    "label": "MONEY",
+    "start": 5572,
+    "end": 5575,
+    "confidence": 0.88,
+    "normalized_text": "USD 0"
+  }
+]

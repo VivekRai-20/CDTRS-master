@@ -1,0 +1,6 @@
+Subject: Data Mining and Data Warehousing
+Title: Association Rule Mining
+Name: Vivek Rai
+Roll No: 42
+Date: 18/08/2026
+Experiment No: 5

@@ -1,0 +1,14 @@
+LABORATORY REPORT
+Subject: Applied Chemistry II
+Experiment No: 07
+Title: Kinetics of Ester Hydrolysis.
+Student Name: Vivek Rai
+Roll Number: 20261042
+Date of Submission: 24/08/2026
+Department: Computer Engineering
+Semester: IV
+Aim: To determine the velocity constant of acid hydrolysis.
+Faculty Incharge: Dr. S. K. Mehta
+Marks Obtained: 24 / 25
+Remarks: Good understanding of first order reaction dynamics.
+Calculations verified accurately.

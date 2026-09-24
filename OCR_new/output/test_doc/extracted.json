@@ -1,0 +1,79 @@
+{
+  "subject": {
+    "field": "subject",
+    "value": "Data Mining and Data Warehousing",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Subject\\s*[:\\-.]?\\s*(.+)",
+    "confidence": null
+  },
+  "title": {
+    "field": "title",
+    "value": "Association Rule Mining",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Title\\s*[:\\-.]?\\s*(.+)",
+    "confidence": null
+  },
+  "name": {
+    "field": "name",
+    "value": "Vivek Rai",
+    "matched_by": "Pattern 1",
+    "pattern_str": "(?:Student\\s*)?Name\\s*[:\\-.]?\\s*([A-Za-z\\s.]+?)(?=\\r?\\n|$)",
+    "confidence": null
+  },
+  "roll_no": {
+    "field": "roll_no",
+    "value": "42",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Roll\\s*(?:No\\.?|Number|Num\\.?)\\s*[:\\-.]?\\s*([A-Za-z0-9]+)",
+    "confidence": null
+  },
+  "date": {
+    "field": "date",
+    "value": "18/08/2026",
+    "matched_by": "Pattern 1",
+    "pattern_str": "\\b(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})\\b",
+    "confidence": null
+  },
+  "semester": {
+    "field": "semester",
+    "value": null,
+    "matched_by": null,
+    "pattern_str": null,
+    "confidence": null
+  },
+  "department": {
+    "field": "department",
+    "value": null,
+    "matched_by": null,
+    "pattern_str": null,
+    "confidence": null
+  },
+  "marks": {
+    "field": "marks",
+    "value": null,
+    "matched_by": null,
+    "pattern_str": null,
+    "confidence": null
+  },
+  "teacher": {
+    "field": "teacher",
+    "value": null,
+    "matched_by": null,
+    "pattern_str": null,
+    "confidence": null
+  },
+  "aim": {
+    "field": "aim",
+    "value": null,
+    "matched_by": null,
+    "pattern_str": null,
+    "confidence": null
+  },
+  "experiment_no": {
+    "field": "experiment_no",
+    "value": "5",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Experiment\\s*(?:No\\.?|Number)?\\s*[:\\-.]?\\s*(\\d+)",
+    "confidence": null
+  }
+}

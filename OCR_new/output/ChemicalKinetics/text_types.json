@@ -1,0 +1,2240 @@
+[
+  {
+    "page": 1,
+    "text": "CHEMICAL KINETICS",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "Chemical kinetics is branch of chemistry",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "with the rates of reaction or factors af",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "rate ard the mechanism of the reaction.",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "*",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 1,
+    "text": "RAte OF REACTION",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "The ratee of chemical reaction is define",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "change in concentration of a designaled ",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "ie. reactant or product in the given tim",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "*",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 1,
+    "text": "AVERAGE RATE",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "If is defined as change in concentration",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "or product in a given interval of time.",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "Consider a reaction",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "2",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 1,
+    "text": "R → P",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "Aug. rate of Rxn = Tc]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "Becoue rate rannat",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "t",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "b ngature",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "∴ Avg. rate of consumption of R= [RI",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "t",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": " Avg. rate of formation of P= sP]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "Δ6",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 1,
+    "text": "4 [I -= Aρ",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": ".,",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "Δt",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 1,
+    "text": "Δ6",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 1,
+    "text": "Δt",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 1,
+    "text": "Unit = M 1s",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 1,
+    "text": "= mol 1dm³s",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "Instantoneos Rate",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 2,
+    "text": "Ine antincar nction at a given instant o",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 2,
+    "text": "called os instutaneaus rate of reaction.",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 2,
+    "text": "To determine instantaneous rate of react",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "a graph of conentration versus time is p",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "a corve is obtained and the tangent is d",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "at a point on a curve where the slope is",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "rate of reaction.",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "too",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "[R]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "[P]",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 2,
+    "text": "Slope= di",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "Slope= - dTR]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "d",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "d+",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "Time",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "Y",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 2,
+    "text": "Time",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 2,
+    "text": "Instantaneous rate of consumption of R  ",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "2",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "dt",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 2,
+    "text": "Instantaneas rate of formation of  = d(p",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "dt",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 2,
+    "text": " Instartuneo us rate of Reaction= -dR] -",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 2,
+    "text": "cl+",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 2,
+    "text": "dt",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 2,
+    "text": "Unit= Ms-",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 2,
+    "text": " mol dmi^³5",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 3,
+    "text": "−",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 3,
+    "text": "FOR Haber's PROCESS",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "LM",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "N,+3H22NH,",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "Rate of consumption of Na  = d[n]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "at",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "Rute of consumption of H, =  d[n,]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "d+",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 3,
+    "text": "d [NK,J",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "Rate of formation of NH, =",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "d+",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "Rate of consumplon of H,",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 3,
+    "text": "=3 x Rute of consumption of N.",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 3,
+    "text": "-d[H2= 3d(23",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 3,
+    "text": "dt",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 3,
+    "text": "dt",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 3,
+    "text": "1 d[H22 = N2 -①",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "dt",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 3,
+    "text": "FP",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "HN do nowy go ary",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "Noods  o x z =",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "O",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "NP",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "HNPT",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "dt",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "2",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": ". From ① and ②",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "⊥H",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "2",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "tp",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "+P",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "P T-  [NJP uy 0 ay",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 3,
+    "text": "or",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "aA+b - cC+ dD",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "Rate of Rection =  dA] = 1",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "cS13",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "2",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "α",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "dt",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "b",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "dt",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "C",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "dt",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "ad",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "*",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "Rate law and Rate constant",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "Consider a general reaction",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "dA + bB   Product",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "The differential rate law is given as",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "Rate=  d(A] α [AJ{ (BJ",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "a c+",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "Rate α AJ{ B]9",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 4,
+    "text": "The rate law is defined as the experimen",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "is directly propb or +o",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 4,
+    "text": "determned equation where rate  concentra",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "reactants raise to some simple power.",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "Here x and y are called order of reactio",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "and it can be positive negative or even",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "zero or fraction.",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "*",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "Rate = KA][B]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "shere k is rate constant or specific rat",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "constant and it is defined as the rate",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "of reaction when the concentration terms",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 4,
+    "text": "are set to unity.",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "ORDER OF REACTION",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "*",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "amc  ",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 5,
+    "text": "consider a general rcaction",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "(",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 5,
+    "text": "aA+ bB+cC+ dn",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "If the rate of of reaction is",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 5,
+    "text": "Experrentally etere)",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 5,
+    "text": "Rate = KAB",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "Then the sum of xty gives overall order",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "of reaction. Thus, overall order of souc",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "as the sum of power or the concentration",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "in the rate law expression.",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "Example",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "2H_2 022H,20 +02",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "pob ordeo",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 5,
+    "text": "0",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 5,
+    "text": "<",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "Rate = K [H202]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "w",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "N 02+ Co → C0+No",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "20",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 5,
+    "text": "Rate= kNo2J^{2CoJ°",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "^",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "↑",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 5,
+    "text": "2ero w.t CO",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "2nd Order",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "w.x.t Nor",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "CH CHO  CHy+ CO",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "Expermentally deesmmal",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 5,
+    "text": "Rare = CHt,0",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "Va",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 5,
+    "text": "H2 + I2  2HI",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 5,
+    "text": "Rate = K∠H2J[I.J",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "Mole cvelarity of elementary reaction",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "*",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 6,
+    "text": "Complex Reaction : Complex Reactions are",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "Yeuci",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 6,
+    "text": "which takes place in",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "a",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "sexiesd",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "steps wbere each step is Elementary",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "Reactien",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "Elementary Reaction: Reactions which occ",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "a singk",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "step and cannot be brokan d",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "further inte simper reaction are called ",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "reactions",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 6,
+    "text": "Molecuelarity: It is a number of reactan",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "taksing part in an Elementary reaction",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "Example",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 6,
+    "text": "C,HI  C,Hy + HI  Unimalecilor",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "2NO  2N0+ 2  Bimolerio",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "20 30(complex Prtor)",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "Mechanism",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 6,
+    "text": "O  0 + [0] - Unimolecular",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "O+[0- 202 -Bimoleclir",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "Overo",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 6,
+    "text": "YYn",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 6,
+    "text": "20 +0  30.+107",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 6,
+    "text": "D",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "2NO,5 2NO,+F",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "Mechonwm",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 7,
+    "text": "NO,F - NO + TFJ-Vnm 3.",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 7,
+    "text": "NO2F+[F3  NO2 + F2m-C",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "Oxeel catio 2NO, F +  2N0, +F2 + [",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "nd f s gegrtior ntermdiute, The fit sepi",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "the lwed ip Rate detorrnininy step",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "Reaction Intermidiate",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 7,
+    "text": "Drring reation mechanism  some species a",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "in one step and are consumed in the subs",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "step, Sych species are known as reaction",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 7,
+    "text": "The concentrs tion of reaction infermidi",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 7,
+    "text": "te des ermine and therofore they do not ",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 7,
+    "text": "sote low.",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "Buse determning Step ",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 7,
+    "text": "A complex reaction takes plare in a seri",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "ekmnentory steps, One of these step is s",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 7,
+    "text": "sther and it is reffered to as oute dcbe",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "Molecuearity of a reaction can be the or",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": " ",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 7,
+    "text": "reaction however, order of reaction conv",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "Sinis, the rote determining step is a el",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "reuction the stiochiometry of the reacti",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "euped to the order of reaction however, ",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 7,
+    "text": "eyd to molervlarity.",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "OROER",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "Molecularity",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 8,
+    "text": "It is an expe he",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 8,
+    "text": "property",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "It is the sum of the",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "It is the rumber of",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "powers ofa concentration",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "reoctunt molecuks taking",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 8,
+    "text": "terms of reactunts thase",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "part in a elemsntury",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "appear in the rate law",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "reaction.",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "It may be an integer,",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "It isa postive integer",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 8,
+    "text": "fraction or zero",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "*INTEGRATED RATE LAW",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "Integrated Rate law for ist order reacti",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "defined as the rate of reuction wbes the",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "depend on the concertation of the single",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "Consider a Reaction",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "A Product",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "∴ The differential rate law",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "Rate= [AT = K[A]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "dt",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 8,
+    "text": "-dGA3=KA]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "dt",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "7.",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 8,
+    "text": " d[A] = k dt",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "A",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 8,
+    "text": "On Integration",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "[AC}",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "6=t",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "dA]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "7",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 9,
+    "text": "kdt",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 9,
+    "text": "[A]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "Ao]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "4=0",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "-S1nE]${}",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 9,
+    "text": "[A0",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "-_n{A-n(A} = k(-0",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 9,
+    "text": "In A5]InA]=-kt",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "In = - k6",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "A",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 9,
+    "text": "L1ITIALT",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 9,
+    "text": "AJ",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "-Kt",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "[At]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "e",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "I",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "(A0]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "0 A = [A]-\" -I form",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 9,
+    "text": "From equation ①",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "-In A + InA0 = kt",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "In [A.]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "= k",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "A",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 9,
+    "text": "2.303 109 A] = K6",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 9,
+    "text": "1AtJ",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 10,
+    "text": "[ ha1 (0 =1",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 10,
+    "text": "0",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 10,
+    "text": "+4",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "7",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "{A = a = Initial concentration of A",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "00",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "and x is the amount that undergoes",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 10,
+    "text": "reaction then concentration at time t=A=",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "K = 2,303 10y (a)",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 10,
+    "text": "t",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "$(a-x)",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "Unit  5",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "HALF LIFE OF FIRST ORDER REACTION",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 10,
+    "text": "It is the time required for the reactant",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "*",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "to fall to one half of its initial conce",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "The Integrated kate law for 1s ooder rea",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "K= 2.303 10y A0]",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "t",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "At",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 10,
+    "text": "where AJ is initial concentration of rea",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "at t=o and Af is concentrction at time",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": " the time required for (Af to become",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "Ag/2 is given by th",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 10,
+    "text": "Substituting in above equation we get",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "If t= ty2 A{J = Ao3",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "2",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 11,
+    "text": "1",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "K= 2.303 10g [A0]",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "6y2",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "[A0]/2",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "2.303 l0g2",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "=",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "K=",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "ty_2",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "2.303 x 0.3010",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "ty",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "ty_2",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "2.303x 0.3010",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "K",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "4",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "=",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "5:+^0$",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": " 0o",
+    "text_type": "PRINTED",
+    "confidence": 0.75
+  },
+  {
+    "page": 11,
+    "text": "**",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "GRAA",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "o   o o 0 4o 4",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "below. From the graph it is clear that b",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "successive half life for first order rea",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "constant.",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "[A",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 11,
+    "text": "cone",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "Ao",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "4",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "(t12)3",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "(+x)2",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "tvr",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 11,
+    "text": "Fime",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 12,
+    "text": "GRAPHICAL REPRESENTATIONst order Reactia",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 12,
+    "text": "*",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "kt= 2,303 10g A]",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "I",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "A$",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "l0yAo =  t + 0",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "2.303",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "(At)",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "which is of type",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "y= mx+c",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 12,
+    "text": "When graph of loy As is plotted against ",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "At",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "we get a straight",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "line passing thoough",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 12,
+    "text": "origin with slope k",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "2.303",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "7",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "loy Ao",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "A",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "slope =ks",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "2.303",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "K",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "t",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 12,
+    "text": "4",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 13,
+    "text": "[A]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "Kt = 2.303 10y",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "T",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 13,
+    "text": "At",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "loy AoJ- log  = Kt",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "2.303",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "- loy A = 2  1oyA",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "2.303",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "loy AJ= - K t + log{A",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "2.303",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "which is of type",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "y=mx+c",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "1og ()",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "rog [A",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 13,
+    "text": "Slope = -k",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "2.303",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "time",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "U",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "Ratee - dA = K(A]",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "dt",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  },
+  {
+    "page": 13,
+    "text": "which is of type y=mx",
+    "text_type": "UNKNOWN",
+    "confidence": 0.5
+  },
+  {
+    "page": 13,
+    "text": "Slope=K",
+    "text_type": "HANDWRITTEN",
+    "confidence": 0.7
+  }
+]

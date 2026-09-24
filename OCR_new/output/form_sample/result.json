@@ -1,0 +1,21 @@
+{
+  "file": "C:\\OCR\\temp\\benchmark\\form_sample.png",
+  "doc_type": "IMAGE",
+  "pages": 1,
+  "elapsed_s": 2.593,
+  "processed_at": "2026-08-23T20:36:37",
+  "extracted": {
+    "subject": "Applied Chemistry II",
+    "title": "Kinetics of Ester Hydrolysis.",
+    "name": "Vivek Rai",
+    "roll_no": "20261042",
+    "date": "24/08/2026",
+    "semester": "IV",
+    "department": "Computer Engineering",
+    "marks": "24 / 25",
+    "teacher": "Dr. S. K. Mehta",
+    "aim": "To determine the velocity constant of acid hydrolysis.",
+    "experiment_no": "07"
+  },
+  "ocr_region_count": 24
+}

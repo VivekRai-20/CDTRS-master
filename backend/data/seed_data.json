@@ -1,0 +1,470 @@
+{
+  "departments": [
+    {
+      "name": "Product Strategy",
+      "code": "PROD"
+    },
+    {
+      "name": "Engineering & Innovation",
+      "code": "ENG"
+    },
+    {
+      "name": "Executive Office",
+      "code": "EXEC"
+    },
+    {
+      "name": "Enterprise Solutions",
+      "code": "ENT"
+    },
+    {
+      "name": "Customer Experience",
+      "code": "CX"
+    },
+    {
+      "name": "Corporate Research",
+      "code": "CR"
+    },
+    {
+      "name": "Market & Business Transformation",
+      "code": "MBT"
+    },
+    {
+      "name": "Partnerships & Technology",
+      "code": "PTN"
+    },
+    {
+      "name": "Product Consulting",
+      "code": "CONS"
+    },
+    {
+      "name": "Information Technology",
+      "code": "TECH"
+    },
+    {
+      "name": "Operations & Procurement",
+      "code": "OPS"
+    },
+    {
+      "name": "Talent Management",
+      "code": "TALENT"
+    },
+    {
+      "name": "Corporate Administration",
+      "code": "CORP"
+    },
+    {
+      "name": "Finance & Accounts",
+      "code": "FIN"
+    },
+    {
+      "name": "Business Support",
+      "code": "SUPPORT"
+    }
+  ],
+  "system_users": [
+    {
+      "username": "corp",
+      "employee_code": "ADM-001",
+      "role": "ADMIN",
+      "full_name": "System Administrator",
+      "email": "admin@novacore.example",
+      "outlook_email": "admin@novacore.example",
+      "department": "CORP",
+      "managed_depts": [
+        "*"
+      ],
+      "designation": "System & Network Administrator",
+      "default_password": "cdtrs@admin",
+      "contexts": [
+        {
+          "context": "ADMIN",
+          "department_code": "CORP"
+        }
+      ]
+    },
+    {
+      "username": "director",
+      "employee_code": "DIR-001",
+      "role": "DIRECTOR",
+      "full_name": "Executive Director",
+      "email": "director@novacore.example",
+      "outlook_email": "director@novacore.example",
+      "department": "EXEC",
+      "managed_depts": [
+        "*"
+      ],
+      "designation": "Executive Director",
+      "default_password": "cdtrs@director",
+      "contexts": [
+        {
+          "context": "DIRECTOR",
+          "department_code": "EXEC"
+        }
+      ]
+    },
+    {
+      "username": "exec_user",
+      "employee_code": "EXEC-001",
+      "role": "DS",
+      "full_name": "Director Secretary",
+      "email": "ds.office@novacore.example",
+      "outlook_email": "ds.office@novacore.example",
+      "department": "EXEC",
+      "managed_depts": [
+        "EXEC"
+      ],
+      "designation": "Executive Assistant to Executive Director",
+      "default_password": "cdtrs@ds",
+      "contexts": [
+        {
+          "context": "DS",
+          "department_code": "EXEC"
+        }
+      ]
+    },
+    {
+      "username": "tso_user",
+      "employee_code": "TSO-ENG-001",
+      "role": "TSO",
+      "full_name": "Technical Staff Officer",
+      "email": "tso.director@novacore.example",
+      "outlook_email": "tso.director@novacore.example",
+      "department": "ENG",
+      "managed_depts": [
+        "EXEC",
+        "ENG"
+      ],
+      "designation": "Executive Office Technical Coordinator",
+      "default_password": "cdtrs@tso",
+      "contexts": [
+        {
+          "context": "TSO",
+          "department_code": "EXEC"
+        },
+        {
+          "context": "EMPLOYEE",
+          "department_code": "ENG"
+        }
+      ]
+    },
+    {
+      "username": "hod_prod",
+      "employee_code": "HOD-PROD-001",
+      "role": "HOD",
+      "full_name": "Dr. A. K. Verma",
+      "email": "hod.pstd@novacore.example",
+      "outlook_email": "hod.pstd@novacore.example",
+      "department": "PROD",
+      "managed_depts": [
+        "PROD",
+        "ENT"
+      ],
+      "designation": "Senior Department Head (PSTD & ESFS)",
+      "default_password": "cdtrs@hod",
+      "contexts": [
+        {
+          "context": "HOD",
+          "department_code": "PROD"
+        },
+        {
+          "context": "HOD",
+          "department_code": "ENT"
+        }
+      ]
+    },
+    {
+      "username": "hod_eng",
+      "employee_code": "HOD-ENG-001",
+      "role": "HOD",
+      "full_name": "Dr. S. R. Kulkarni",
+      "email": "hod.fctd@novacore.example",
+      "outlook_email": "hod.fctd@novacore.example",
+      "department": "ENG",
+      "managed_depts": [
+        "ENG",
+        "CX"
+      ],
+      "designation": "Senior Department Head (FCTD & CEC)",
+      "default_password": "cdtrs@hod",
+      "contexts": [
+        {
+          "context": "HOD",
+          "department_code": "ENG"
+        },
+        {
+          "context": "HOD",
+          "department_code": "CX"
+        }
+      ]
+    },
+    {
+      "username": "hod_cit",
+      "employee_code": "HOD-CIT-001",
+      "role": "HOD",
+      "full_name": "Dr. Manish Tandon",
+      "email": "hod.cit@novacore.example",
+      "outlook_email": "hod.cit@novacore.example",
+      "department": "TECH",
+      "managed_depts": [
+        "TECH",
+        "TALENT"
+      ],
+      "designation": "Senior Technology & Operations Head",
+      "default_password": "cdtrs@hod",
+      "contexts": [
+        {
+          "context": "HOD",
+          "department_code": "TECH"
+        },
+        {
+          "context": "HOD",
+          "department_code": "TALENT"
+        }
+      ]
+    },
+    {
+      "username": "hod_corp",
+      "employee_code": "HOD-ADM-001",
+      "role": "HOD",
+      "full_name": "Shri R. C. Meena",
+      "email": "hod.admin@novacore.example",
+      "outlook_email": "hod.admin@novacore.example",
+      "department": "CORP",
+      "managed_depts": [
+        "CORP",
+        "FIN",
+        "SUPPORT",
+        "OPS"
+      ],
+      "designation": "Corporate Administration Head",
+      "default_password": "cdtrs@hod",
+      "contexts": [
+        {
+          "context": "HOD",
+          "department_code": "CORP"
+        },
+        {
+          "context": "HOD",
+          "department_code": "FIN"
+        },
+        {
+          "context": "HOD",
+          "department_code": "SUPPORT"
+        },
+        {
+          "context": "HOD",
+          "department_code": "OPS"
+        }
+      ]
+    },
+    {
+      "username": "hod_ptc",
+      "employee_code": "HOD-PTC-001",
+      "role": "HOD",
+      "full_name": "Dr. Vandana Rao",
+      "email": "hod.ptc@novacore.example",
+      "outlook_email": "hod.ptc@novacore.example",
+      "department": "PTN",
+      "managed_depts": [
+        "PTN",
+        "CONS",
+        "CR",
+        "MBT"
+      ],
+      "designation": "Senior Product & Research Head",
+      "default_password": "cdtrs@hod",
+      "contexts": [
+        {
+          "context": "HOD",
+          "department_code": "PTN"
+        },
+        {
+          "context": "HOD",
+          "department_code": "CONS"
+        },
+        {
+          "context": "HOD",
+          "department_code": "CR"
+        },
+        {
+          "context": "HOD",
+          "department_code": "MBT"
+        }
+      ]
+    }
+  ],
+  "employees": [
+    {
+      "employee_code": "EMP-PROD-001",
+      "username": "emp_anil",
+      "full_name": "Anil Kumar",
+      "department": "PROD",
+      "managed_depts": [],
+      "designation": "Senior Technical Officer",
+      "email": "anil.kumar@novacore.example",
+      "outlook_email": "anil.kumar@novacore.example",
+      "default_password": "cdtrs@emp",
+      "contexts": [
+        {
+          "context": "EMPLOYEE",
+          "department_code": "PROD"
+        }
+      ]
+    },
+    {
+      "employee_code": "EMP-PROD-002",
+      "username": "emp_vikram",
+      "full_name": "Vikram Malhotra",
+      "department": "PROD",
+      "managed_depts": [
+        "ENT"
+      ],
+      "designation": "Technical Officer",
+      "email": "vikram.malhotra@novacore.example",
+      "outlook_email": "vikram.malhotra@novacore.example",
+      "default_password": "cdtrs@emp",
+      "contexts": [
+        {
+          "context": "EMPLOYEE",
+          "department_code": "PROD"
+        },
+        {
+          "context": "HOD",
+          "department_code": "ENT"
+        }
+      ]
+    },
+    {
+      "employee_code": "EMP-ENG-002",
+      "username": "emp_sneha",
+      "full_name": "Sneha Deshmukh",
+      "department": "ENG",
+      "managed_depts": [
+        "CX"
+      ],
+      "designation": "Senior Engineering Specialist",
+      "email": "sneha.deshmukh@novacore.example",
+      "outlook_email": "sneha.deshmukh@novacore.example",
+      "default_password": "cdtrs@emp",
+      "contexts": [
+        {
+          "context": "EMPLOYEE",
+          "department_code": "ENG"
+        },
+        {
+          "context": "HOD",
+          "department_code": "CX"
+        }
+      ]
+    },
+    {
+      "employee_code": "EMP-ENG-003",
+      "username": "emp_rahul",
+      "full_name": "Rahul Sharma",
+      "department": "ENG",
+      "managed_depts": [
+        "PROD"
+      ],
+      "designation": "Engineering Specialist",
+      "email": "rahul.sharma@novacore.example",
+      "outlook_email": "rahul.sharma@novacore.example",
+      "default_password": "cdtrs@emp",
+      "contexts": [
+        {
+          "context": "EMPLOYEE",
+          "department_code": "ENG"
+        },
+        {
+          "context": "HOD",
+          "department_code": "PROD"
+        }
+      ]
+    },
+    {
+      "employee_code": "EMP-CIT-001",
+      "username": "emp_sunil",
+      "full_name": "Sunil Gupta",
+      "department": "TECH",
+      "managed_depts": [
+        "TALENT"
+      ],
+      "designation": "Network & Systems Engineer",
+      "email": "sunil.gupta@novacore.example",
+      "outlook_email": "sunil.gupta@novacore.example",
+      "default_password": "cdtrs@emp",
+      "contexts": [
+        {
+          "context": "EMPLOYEE",
+          "department_code": "TECH"
+        },
+        {
+          "context": "HOD",
+          "department_code": "TALENT"
+        }
+      ]
+    },
+    {
+      "employee_code": "EMP-ADM-001",
+      "username": "emp_pooja",
+      "full_name": "Pooja Nair",
+      "department": "CORP",
+      "managed_depts": [
+        "FIN"
+      ],
+      "designation": "Assistant Administrative Officer",
+      "email": "pooja.nair@novacore.example",
+      "outlook_email": "pooja.nair@novacore.example",
+      "default_password": "cdtrs@emp",
+      "contexts": [
+        {
+          "context": "EMPLOYEE",
+          "department_code": "CORP"
+        },
+        {
+          "context": "HOD",
+          "department_code": "FIN"
+        }
+      ]
+    },
+    {
+      "employee_code": "EMP-FIN-001",
+      "username": "emp_kamble",
+      "full_name": "Kamble M. M.",
+      "department": "FIN",
+      "managed_depts": [],
+      "designation": "Senior Accounts Officer",
+      "email": "kamble.mm@novacore.example",
+      "outlook_email": "kamble.mm@novacore.example",
+      "default_password": "cdtrs@emp",
+      "contexts": [
+        {
+          "context": "EMPLOYEE",
+          "department_code": "FIN"
+        }
+      ]
+    },
+    {
+      "employee_code": "EMP-MMG-001",
+      "username": "emp_rajesh",
+      "full_name": "Rajesh Varma",
+      "department": "OPS",
+      "managed_depts": [
+        "SUPPORT"
+      ],
+      "designation": "Stores & Material Management Officer",
+      "email": "rajesh.varma@novacore.example",
+      "outlook_email": "rajesh.varma@novacore.example",
+      "default_password": "cdtrs@emp",
+      "contexts": [
+        {
+          "context": "EMPLOYEE",
+          "department_code": "OPS"
+        },
+        {
+          "context": "HOD",
+          "department_code": "SUPPORT"
+        }
+      ]
+    }
+  ]
+}

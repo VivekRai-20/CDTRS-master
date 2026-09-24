@@ -1,0 +1,74 @@
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+backend/mail/.token_cache.json
+
+# Packaging / build outputs
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment variables / secrets
+.env
+*.env
+frontend/.env
+backend/.env
+.env.local
+.env.*.local
+*.log
+
+# Backend uploads & local databases
+backend/uploads/
+*.db
+scratch/
+frontend/data/cache/
+*.zip
+
+# PaddleOCR model weights & inference cache (trained weights - too large for git)
+# Code files in OCR/fineTune/ ARE tracked (train.py, config.py, etc.)
+OCR/fineTune/models/handwritten_*/
+OCR/fineTune/models/original/*.pdparams
+OCR/fineTune/models/original/*.pdopt
+OCR/fineTune/models/original/*.pdiparams
+OCR/fineTune/models/original/*.pdiparams.info
+OCR/fineTune/models/original/*.pdmodel
+OCR/fineTune/dataset/splits/
+*.pdparams
+*.pdopt
+*.pdiparams
+*.pdiparams.info
+*.pdmodel
+
+# Paddle / inference cache directories
+.paddleocr/
+paddle_inference_*/
+inference/
+
+# Large test / sample files
+sample_test_document.pdf
+sample_test_document.txt
+test_finance_audit_dispatch.pdf
+test_hr_recruitment_dispatch.pdf
+test_technical_infrastructure_dispatch.pdf

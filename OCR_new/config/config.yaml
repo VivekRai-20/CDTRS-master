@@ -1,0 +1,152 @@
+# =============================================================================
+# Offline OCR System — Global Configuration
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Offline Mode (HARD requirement — do not set to false for runtime operation)
+# ---------------------------------------------------------------------------
+offline_mode: true
+
+# ---------------------------------------------------------------------------
+# Paths  (relative to project root)
+# ---------------------------------------------------------------------------
+paths:
+  models_dir:   "models/paddleocr"
+  input_dir:    "input"
+  output_dir:   "output"
+  temp_dir:     "temp"
+  patterns_file: "extraction/patterns.yaml"
+
+# ---------------------------------------------------------------------------
+# PaddleOCR Settings
+# ---------------------------------------------------------------------------
+paddleocr:
+  lang: "en"            # Language code: 'en', 'ch', 'latin', etc.
+  ocr_version: "PP-OCRv5" # PP-OCRv5 uses PP-OCRv5_server_det + en_PP-OCRv5_mobile_rec
+                           # server_det is far superior at finding faint handwriting strokes vs v4 mobile_det
+                           # PP-OCRv6 medium models are NOT optimised for English — keep PP-OCRv5 for English handwriting
+  use_gpu: false        # Set true only if a GPU + CUDA toolkit is available
+
+  # Pipeline component toggles
+  use_textline_orientation: true     # Detects/corrects individual textline orientation (keep true — handles per-line rotation correctly)
+  use_doc_unwarping: false           # Disable UVDoc (causes crashes and distorted handwriting)
+  use_doc_orientation_classify: false# Disable whole-doc orientation (causes false 90/180 rotations on handwriting pages)
+
+  # Text detection parameters tuned for handwriting & cursive strokes
+  #
+  # text_det_limit_side_len: Max side-length before PaddleOCR rescales the image for detection.
+  #   At 300 DPI, an A4 page is ~2480x3508 px.
+  #   NOTE: PP-OCRv5 uses a server_det model (81MB) which uses far more working RAM than
+  #   PP-OCRv4's mobile_det. 3000 caused OOM on pages 4+ due to memory accumulation.
+  #   1920 is the safe limit that keeps ~55% of original resolution without crashing.
+  #   PP-OCRv5 server_det at 1920 still significantly outperforms PP-OCRv4 mobile_det at 1920.
+  text_det_limit_side_len: 1920
+
+  # text_det_limit_type: Which dimension the side_len limit applies to.
+  #   "max" = limit the longest side (portrait/landscape pages)
+  text_det_limit_type: "max"
+
+  # text_det_thresh: pixel-level score threshold for the detection probability map.
+  #   Lower = detects fainter/thinner handwriting strokes (default 0.3).
+  text_det_thresh: 0.2
+
+  # text_det_box_thresh: box-level confidence threshold after polygon grouping.
+  #   Lower = keeps more candidate text boxes (default 0.6).
+  text_det_box_thresh: 0.4
+
+  # text_det_unclip_ratio: expansion factor applied around each detected text box.
+  #   1.6 gives enough margin for ascenders/descenders without merging adjacent lines
+  #   (1.8 was too aggressive and frequently merged two handwritten lines into one box).
+  text_det_unclip_ratio: 1.6
+
+  # Model directories (relative to project root, used when offline local models are provided)
+  det_model_dir: "models/paddleocr/det"
+  rec_model_dir: "models/paddleocr/rec"
+  cls_model_dir: "models/paddleocr/cls"
+
+  # Minimum confidence threshold to keep a recognised text region (0.0 - 1.0).
+  # 0.25 recovers more low-confidence handwritten words (cursive, faint ink, mixed styles).
+  drop_score: 0.25
+
+  # --- PaddleOCR 2.x only (ignored in 3.x) ---
+  # use_angle_cls: true   # Replaced by use_textline_orientation in 3.x
+  # show_log: false       # Removed in 3.x
+
+# ---------------------------------------------------------------------------
+# Image Preprocessing  (each step can be toggled independently)
+# ---------------------------------------------------------------------------
+preprocessing:
+  enabled: true
+  # Individual steps -- disable any that slow down or degrade your documents
+  grayscale: false
+  denoise: false
+  contrast_enhance: false
+  # Adaptive thresholding (useful for low-contrast/dirty scans; keep false for clean digital PDFs/photos)
+  threshold: false
+  # Method used when threshold is true: "adaptive" | "otsu"
+  threshold_method: "adaptive"
+
+  # IMPORTANT — keep both deskew and auto_rotate FALSE for handwritten documents.
+  #
+  # deskew: The Hough-line algorithm measures the most common angle in the image and
+  #   treats it as document skew. Handwriting strokes naturally scatter across many angles
+  #   (italics, cursive, mixed slants), so the dominant angle found is the average of
+  #   handwriting inclinations — NOT a true document tilt. Rotating by that angle physically
+  #   warps the page and garbles the text fed to PaddleOCR.
+  deskew: false
+
+  # auto_rotate: The projection-variance heuristic can mistake a page of handwriting for
+  #   a rotated page (especially when many strokes are diagonal). This causes full 90°/180°
+  #   flips that produce the upside-down / mirrored text seen in the output.
+  #   PaddleOCR's use_textline_orientation already handles per-line rotation correctly;
+  #   this coarse page-level rotation is redundant and harmful for handwritten content.
+  auto_rotate: false
+
+  # Remove thin borders / scan artefacts
+  border_removal: false
+  # Upscale factor for very small images (1.0 = no scaling)
+  upscale_factor: 1.0
+  # Minimum DPI to target when rendering PDF pages
+  pdf_render_dpi: 300
+
+# ---------------------------------------------------------------------------
+# PDF Processing
+# ---------------------------------------------------------------------------
+pdf:
+  # DPI to use when converting PDF pages to images
+  dpi: 300
+  # Image format for intermediate page renders
+  page_image_format: "PNG"
+  # Keep temp page images after processing
+  keep_temp_pages: false
+
+# ---------------------------------------------------------------------------
+# DOCX Processing
+# ---------------------------------------------------------------------------
+docx:
+  # Extract embedded images from DOCX and run OCR on them
+  extract_embedded_images: true
+
+# ---------------------------------------------------------------------------
+# Output Settings
+# ---------------------------------------------------------------------------
+output:
+  # Save individual OCR fields as plain text
+  save_txt: true
+  # Save full structured OCR result as JSON
+  save_json: true
+  # Pretty-print JSON output
+  json_indent: 2
+  # Include image crops of each detected text region in output
+  save_region_crops: false
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging:
+  level: "INFO"           # DEBUG | INFO | WARNING | ERROR
+  log_to_file: true
+  log_file: "ocr_system.log"
+  log_dir: "output"
+  max_bytes: 5242880      # 5 MB per log file
+  backup_count: 3

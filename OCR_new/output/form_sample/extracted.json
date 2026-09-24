@@ -1,0 +1,79 @@
+{
+  "subject": {
+    "field": "subject",
+    "value": "Applied Chemistry II",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Subject\\s*[:\\-.]?\\s*(.+)",
+    "confidence": null
+  },
+  "title": {
+    "field": "title",
+    "value": "Kinetics of Ester Hydrolysis.",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Title\\s*[:\\-.]?\\s*(.+)",
+    "confidence": null
+  },
+  "name": {
+    "field": "name",
+    "value": "Vivek Rai",
+    "matched_by": "Pattern 1",
+    "pattern_str": "(?:Student\\s*)?Name\\s*[:\\-.]?\\s*([A-Za-z\\s.]+?)(?=\\r?\\n|$)",
+    "confidence": null
+  },
+  "roll_no": {
+    "field": "roll_no",
+    "value": "20261042",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Roll\\s*(?:No\\.?|Number|Num\\.?)\\s*[:\\-.]?\\s*([A-Za-z0-9]+)",
+    "confidence": null
+  },
+  "date": {
+    "field": "date",
+    "value": "24/08/2026",
+    "matched_by": "Pattern 1",
+    "pattern_str": "\\b(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})\\b",
+    "confidence": null
+  },
+  "semester": {
+    "field": "semester",
+    "value": "IV",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Semester\\s*[:\\-.]?\\s*([A-Za-z0-9]+)",
+    "confidence": null
+  },
+  "department": {
+    "field": "department",
+    "value": "Computer Engineering",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Department\\s*[:\\-.]?\\s*(.+)",
+    "confidence": null
+  },
+  "marks": {
+    "field": "marks",
+    "value": "24 / 25",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Marks?\\s*(?:Obtained|Scored|Awarded)?\\s*[:\\-.]?\\s*(\\d+(?:\\.\\d+)?(?:\\s*/\\s*\\d+)?)",
+    "confidence": null
+  },
+  "teacher": {
+    "field": "teacher",
+    "value": "Dr. S. K. Mehta",
+    "matched_by": "Pattern 1",
+    "pattern_str": "\\b(?:Teacher|Faculty(?:\\s*Incharge)?|Instructor|Prof(?:essor)?|Dr\\.?)\\s*(?:Name)?\\s*[:\\-.]?\\s*([^\\n]+)",
+    "confidence": null
+  },
+  "aim": {
+    "field": "aim",
+    "value": "To determine the velocity constant of acid hydrolysis.",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Aim\\s*[:\\-.]?\\s*(.+)",
+    "confidence": null
+  },
+  "experiment_no": {
+    "field": "experiment_no",
+    "value": "07",
+    "matched_by": "Pattern 1",
+    "pattern_str": "Experiment\\s*(?:No\\.?|Number)?\\s*[:\\-.]?\\s*(\\d+)",
+    "confidence": null
+  }
+}

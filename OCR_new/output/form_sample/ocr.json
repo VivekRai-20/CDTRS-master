@@ -1,0 +1,273 @@
+{
+  "file": "C:\\OCR\\temp\\benchmark\\form_sample.png",
+  "doc_type": "IMAGE",
+  "pages": 1,
+  "elapsed_s": 2.593,
+  "processed_at": "2026-08-23T20:36:37",
+  "regions": [
+    {
+      "text": "LABORATORY REPORT",
+      "confidence": 0.9973,
+      "bbox": [
+        251,
+        43,
+        573,
+        68
+      ],
+      "page": 1
+    },
+    {
+      "text": "Applied Chemistry II",
+      "confidence": 0.9927,
+      "bbox": [
+        338,
+        117,
+        556,
+        148
+      ],
+      "page": 1
+    },
+    {
+      "text": "Subject:",
+      "confidence": 0.9999,
+      "bbox": [
+        57,
+        121,
+        174,
+        154
+      ],
+      "page": 1
+    },
+    {
+      "text": "07",
+      "confidence": 0.9994,
+      "bbox": [
+        337,
+        179,
+        370,
+        204
+      ],
+      "page": 1
+    },
+    {
+      "text": "Experiment No:",
+      "confidence": 0.9999,
+      "bbox": [
+        61,
+        183,
+        270,
+        211
+      ],
+      "page": 1
+    },
+    {
+      "text": "Kinetics of Ester Hydrolysis.",
+      "confidence": 0.9852,
+      "bbox": [
+        339,
+        239,
+        630,
+        266
+      ],
+      "page": 1
+    },
+    {
+      "text": "Title:",
+      "confidence": 0.9998,
+      "bbox": [
+        54,
+        237,
+        134,
+        275
+      ],
+      "page": 1
+    },
+    {
+      "text": "Vivek Rai",
+      "confidence": 0.999,
+      "bbox": [
+        338,
+        299,
+        444,
+        325
+      ],
+      "page": 1
+    },
+    {
+      "text": "Student Name:",
+      "confidence": 0.9996,
+      "bbox": [
+        58,
+        302,
+        262,
+        331
+      ],
+      "page": 1
+    },
+    {
+      "text": "20261042",
+      "confidence": 0.9998,
+      "bbox": [
+        340,
+        360,
+        446,
+        383
+      ],
+      "page": 1
+    },
+    {
+      "text": "Roll Number:",
+      "confidence": 0.9997,
+      "bbox": [
+        57,
+        359,
+        240,
+        393
+      ],
+      "page": 1
+    },
+    {
+      "text": "Date of Submission: 24/08/2026",
+      "confidence": 0.986,
+      "bbox": [
+        58,
+        416,
+        461,
+        452
+      ],
+      "page": 1
+    },
+    {
+      "text": "Computer Engineering",
+      "confidence": 1.0,
+      "bbox": [
+        340,
+        478,
+        577,
+        507
+      ],
+      "page": 1
+    },
+    {
+      "text": "Department:",
+      "confidence": 0.9999,
+      "bbox": [
+        59,
+        479,
+        228,
+        514
+      ],
+      "page": 1
+    },
+    {
+      "text": "IV",
+      "confidence": 0.9516,
+      "bbox": [
+        334,
+        536,
+        368,
+        566
+      ],
+      "page": 1
+    },
+    {
+      "text": "Semester:",
+      "confidence": 0.9998,
+      "bbox": [
+        57,
+        541,
+        201,
+        572
+      ],
+      "page": 1
+    },
+    {
+      "text": "To determine the velocity constant of acid hydrolysis.",
+      "confidence": 0.9936,
+      "bbox": [
+        336,
+        598,
+        893,
+        627
+      ],
+      "page": 1
+    },
+    {
+      "text": "Aim:",
+      "confidence": 0.9996,
+      "bbox": [
+        55,
+        597,
+        129,
+        636
+      ],
+      "page": 1
+    },
+    {
+      "text": "Dr. S. K. Mehta",
+      "confidence": 0.9945,
+      "bbox": [
+        340,
+        661,
+        506,
+        683
+      ],
+      "page": 1
+    },
+    {
+      "text": "Faculty Incharge:",
+      "confidence": 0.9996,
+      "bbox": [
+        57,
+        661,
+        298,
+        693
+      ],
+      "page": 1
+    },
+    {
+      "text": "24 / 25",
+      "confidence": 0.9236,
+      "bbox": [
+        337,
+        718,
+        416,
+        745
+      ],
+      "page": 1
+    },
+    {
+      "text": "Marks Obtained:",
+      "confidence": 0.9999,
+      "bbox": [
+        60,
+        722,
+        284,
+        750
+      ],
+      "page": 1
+    },
+    {
+      "text": "Remarks: Good understanding of first order reaction dynamics.",
+      "confidence": 0.9988,
+      "bbox": [
+        59,
+        802,
+        750,
+        830
+      ],
+      "page": 1
+    },
+    {
+      "text": "Calculations verified accurately.",
+      "confidence": 0.9816,
+      "bbox": [
+        199,
+        841,
+        534,
+        868
+      ],
+      "page": 1
+    }
+  ]
+}

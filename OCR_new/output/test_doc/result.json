@@ -1,0 +1,21 @@
+{
+  "file": "C:\\OCR\\input\\test_doc.png",
+  "doc_type": "IMAGE",
+  "pages": 1,
+  "elapsed_s": 1.76,
+  "processed_at": "2026-08-23T20:36:27",
+  "extracted": {
+    "subject": "Data Mining and Data Warehousing",
+    "title": "Association Rule Mining",
+    "name": "Vivek Rai",
+    "roll_no": "42",
+    "date": "18/08/2026",
+    "semester": null,
+    "department": null,
+    "marks": null,
+    "teacher": null,
+    "aim": null,
+    "experiment_no": "5"
+  },
+  "ocr_region_count": 6
+}

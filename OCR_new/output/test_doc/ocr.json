@@ -1,0 +1,75 @@
+{
+  "file": "C:\\OCR\\input\\test_doc.png",
+  "doc_type": "IMAGE",
+  "pages": 1,
+  "elapsed_s": 1.76,
+  "processed_at": "2026-08-23T20:36:27",
+  "regions": [
+    {
+      "text": "Subject: Data Mining and Data Warehousing",
+      "confidence": 0.9999,
+      "bbox": [
+        48,
+        42,
+        760,
+        82
+      ],
+      "page": 1
+    },
+    {
+      "text": "Title: Association Rule Mining",
+      "confidence": 0.9923,
+      "bbox": [
+        49,
+        110,
+        521,
+        153
+      ],
+      "page": 1
+    },
+    {
+      "text": "Name: Vivek Rai",
+      "confidence": 0.9951,
+      "bbox": [
+        51,
+        186,
+        318,
+        216
+      ],
+      "page": 1
+    },
+    {
+      "text": "Roll No: 42",
+      "confidence": 0.9929,
+      "bbox": [
+        50,
+        255,
+        229,
+        287
+      ],
+      "page": 1
+    },
+    {
+      "text": "Date: 18/08/2026",
+      "confidence": 0.9993,
+      "bbox": [
+        51,
+        326,
+        326,
+        355
+      ],
+      "page": 1
+    },
+    {
+      "text": "Experiment No: 5",
+      "confidence": 0.9735,
+      "bbox": [
+        51,
+        394,
+        329,
+        429
+      ],
+      "page": 1
+    }
+  ]
+}

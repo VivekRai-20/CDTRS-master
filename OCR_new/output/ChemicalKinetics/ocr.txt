@@ -1,0 +1,247 @@
+CHEMICAL KINETICS
+Chemical kinetics is branch of chemistry that deals
+with the rates of reaction or factors affecting
+rate ard the mechanism of the reaction.
+* RAte OF REACTION
+The ratee of chemical reaction is defined as the
+change in concentration of a designaled species
+ie. reactant or product in the given time interval.
+* AVERAGE RATE
+If is defined as change in concentration of reactant
+or product in a given interval of time.
+Consider a reaction 2
+R → P
+Aug. rate of Rxn = Tc] t Becoue rate rannat b ngature
+∴ Avg. rate of consumption of R= [RI t
+Avg. rate of formation of P= sP] Δ6
+., 4 [I -= Aρ Δt Δt
+Δ6
+Unit = M 1s
+= mol 1dm³s
+Instantoneos Rate
+Ine antincar nction at a given instant of t called os instutaneaus rate of reaction. To determine instantaneous rate of reaction,
+a graph of conentration versus time is plotted a corve is obtained and the tangent is drown
+at a point on a curve where the slope is rate of reaction.
+too
+[R]
+[P]
+Slope= - dTR] Slope= di
+d+ d
+Time Y
+Time
+Instantaneous rate of consumption of R  -d[R] 2
+dt
+Instantaneas rate of formation of  = d(p
+dt
+Instartuneo us rate of Reaction= -dR] - d[p]
+cl+ dt
+Unit= Ms-
+mol dmi^³5
+FOR Haber's PROCESS − LM
+N,+3H22NH,
+Rate of consumption of Na  = d[n] at
+Rute of consumption of H, =  d[n,] d+
+Rate of formation of NH, = d [NK,J
+d+
+Rate of consumplon of H, =3 x Rute of consumption of N.
+-d[H2= 3d(23 dt
+dt
+1 d[H22 = N2 -① dt
+FP
+HN do nowy go ary Noods  o x z =
+NP O
+HNPT dt
+. From ① and ② 2
+⊥H
+2
+tp or +P P T-  [NJP uy 0 ay
+aA+b - cC+ dD
+Rate of Rection =  dA] = 1 α cS13 2
+dt b dt C dt
+ad
+* Rate law and Rate constant
+Consider a general reaction
+dA + bB   Product
+The differential rate law is given as
+Rate=  d(A] α [AJ{ (BJ
+a c+
+Rate α AJ{ B]9
+The rate law is defined as the experimentally is directly propb or +o
+determned equation where rate  concentration o
+reactants raise to some simple power.
+Here x and y are called order of reaction
+and it can be positive negative or even zero or fraction.
+*
+Rate = KA][B]
+constant and it is defined as the rate shere k is rate constant or specific rate
+of reaction when the concentration terms are set to unity.
+* ORDER OF REACTION amc
+consider a general rcaction (
+aA+ bB+cC+ dn
+If the rate of of reaction is
+Experrentally etere)
+Rate = KAB
+Then the sum of xty gives overall order
+of reaction. Thus, overall order of souction is given
+as the sum of power or the concentration terms
+in the rate law expression.
+Example
+2H_2 022H,20 +02 0 < pob ordeo
+Rate = K [H202]
+w
+N 02+ Co → C0+No 20
+Rate= kNo2J^{2CoJ° ^
+↑
+2nd Order 2ero w.t CO
+w.x.t Nor
+CH CHO  CHy+ CO Expermentally deesmmal
+Rare = CHt,0 Va
+H2 + I2  2HI
+Rate = K∠H2J[I.J
+* Mole cvelarity of elementary reaction
+Complex Reaction : Complex Reactions are thosc which takes place in Yeuci
+a
+sexiesd
+steps wbere each step is Elementary Reactien
+Elementary Reaction: Reactions which occur in a singk
+step and cannot be brokan d
+further inte simper reaction are called elemit reactions
+Molecuelarity: It is a number of reactant molecles
+taksing part in an Elementary reaction
+Example
+C,HI  C,Hy + HI  Unimalecilor
+2NO  2N0+ 2  Bimolerio
+Mechanism 20 30(complex Prtor)
+O+[0- 202 -Bimoleclir O  0 + [0] - Unimolecular
+Overo
+YYn
+20 +0  30.+107 D
+2NO,5 2NO,+F Mechonwm
+NO,F - NO + TFJ-Vnm 3.
+NO2F+[F3  NO2 + F2m-C
+Oxeel catio 2NO, F +  2N0, +F2 + [
+nd f s gegrtior ntermdiute, The fit sepintmmeh
+the lwed ip Rate detorrnininy step
+Reaction Intermidiate
+Drring reation mechanism  some species are foomed
+in one step and are consumed in the subsequent
+step, Sych species are known as reaction intermdate
+The concentrs tion of reaction infermidiate is diffcult
+te des ermine and therofore they do not appeor in
+sote low.
+Buse determning Step
+A complex reaction takes plare in a series or
+ekmnentory steps, One of these step is slower than
+sther and it is reffered to as oute dcberming step
+Molecuearity of a reaction can be the order of
+Sinis, the rote determining step is a elementary reaction however, order of reaction converse is not Tre
+reuction the stiochiometry of the reaction is
+euped to the order of reaction however, order is not
+eyd to molervlarity.
+OROER Molecularity
+It is an expe he property
+It is the sum of the It is the rumber of
+powers ofa concentration reoctunt molecuks taking
+terms of reactunts thase part in a elemsntury
+appear in the rate law reaction.
+It may be an integer, fraction or zero It isa postive integer
+*INTEGRATED RATE LAW
+Integrated Rate law for ist order reaction s defined as the rate of reuction wbes the
+Consider a Reaction depend on the concertation of the single recte
+A Product
+∴ The differential rate law
+Rate= [AT = K[A] dt
+-dGA3=KA]
+dt 7.
+d[A] = k dt A
+On Integration
+[AC} 6=t
+dA] 7 kdt
+[A]
+Ao] 4=0
+-S1nE]${} [A0
+-_n{A-n(A} = k(-0
+In A5]InA]=-kt
+In = - k6 A
+AJ L1ITIALT
+-Kt
+[At] I e
+(A0]
+0 A = [A]-" -I form
+From equation ①
+-In A + InA0 = kt
+In [A.] = k
+A
+2.303 109 A] = K6 1AtJ
+[ ha1 (0 =1
+7 +4 0 {A = a = Initial concentration of A 00
+and x is the amount that undergoes
+reaction then concentration at time t=A=dy
+K = 2,303 10y (a)
+t
+$(a-x) Unit  5
+HALF LIFE OF FIRST ORDER REACTION
+It is the time required for the reactant concentratio *
+to fall to one half of its initial concentration
+The Integrated kate law for 1s ooder reaction is
+K= 2.303 10y A0]
+t
+At where AJ is initial concentration of reactan
+at t=o and Af is concentrction at time
+the time required for (Af to become
+Ag/2 is given by th
+Substituting in above equation we get
+If t= ty2 A{J = Ao3 1 2
+K= 2.303 10g [A0]
+6y2 [A0]/2
+2.303 l0g2 =
+K= ty_2
+2.303 x 0.3010
+ty_2 ty
+2.303x 0.3010
+= 4 K
+5:+^0$ 0o
+**
+o   o o 0 4o 4 below. From the graph it is clear that bat GRAA
+successive half life for first order reactian is
+constant.
+[A
+cone
+Ao
+4
+(t12)3
+(+x)2
+tvr
+Fime
+* GRAPHICAL REPRESENTATIONst order Reactiar
+I kt= 2,303 10g A] A$
+l0yAo =  t + 0 2.303
+(At)
+which is of type
+y= mx+c
+When graph of loy As is plotted against t
+we get a straight At line passing thoough
+origin with slope k 2.303
+7
+loy Ao
+A slope =ks
+2.303
+K
+4 t
+Kt = 2.303 10y [A]
+T At
+loy AoJ- log  = Kt
+2.303
+- loy A = 2  1oyA 2.303
+loy AJ= - K t + log{A 2.303
+which is of type
+y=mx+c
+1og ()
+rog [A
+Slope = -k
+2.303
+time
+U
+Ratee - dA = K(A]
+dt which is of type y=mx
+Slope=K
