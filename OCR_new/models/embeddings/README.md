@@ -1,20 +1,11 @@
-﻿# models/embeddings/
+# models/embeddings/
 
-Place a Sentence-Transformer compatible embedding model here.
+Sentence embedding model used for semantic understanding (`semantic/embedding_engine.py`),
+for example document similarity and semantic classification.
 
-## Recommended: sentence-transformers/all-MiniLM-L6-v2
+`models/embeddings/model/` holds **sentence-transformers/all-MiniLM-L6-v2** (about
+90 MB). It is tracked in git, so it is available offline right after cloning.
 
-Download the model offline and place in:
-
-    models/embeddings/model/
-    ├── config.json
-    ├── tokenizer_config.json
-    ├── tokenizer.json
-    ├── vocab.txt
-    └── pytorch_model.bin  (or model.safetensors)
-
-## Configuration (config.yaml)
-
-    semantic:
-      enabled: true
-      embedding_model: "models/embeddings/model"
+The path is set in `config/config.yaml` → `semantic.embedding_model` (default
+`models/embeddings/model`). It is loaded with `sentence-transformers` 5.6.1 from
+`imp.txt`, and never downloaded at run time.

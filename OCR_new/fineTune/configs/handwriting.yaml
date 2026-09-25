@@ -1,0 +1,45 @@
+# Settings for:  python fineTune/training/train.py --task handwriting
+# Any value can also be given on the command line, e.g. --epochs 20 --batch-size 4
+
+# Model to start from: "" = the active model (models/handwriting/active.txt),
+# or a folder name under models/handwriting/ such as "trocr-small-handwritten" or "v2".
+# Starting from your previous fine-tuned version and adding new labelled lines
+# is the normal way to keep improving.
+base_model: ""
+
+# Also learn from lines you labelled PRINTED (usually not needed).
+include_printed: false
+
+# Passes over the training lines.  Training stops earlier when the validation
+# lines stop improving for `early_stopping_patience` passes.
+epochs: 15
+early_stopping_patience: 4
+
+# Lines per step.  Lower it (4 or 2) if the PC runs out of memory.
+batch_size: 8
+
+# Learning speed.  3e-5 suits a few hundred to a few thousand lines;
+# use 1e-5 if the validation error jumps around.
+learning_rate: 3.0e-5
+weight_decay: 0.01
+warmup_ratio: 0.1
+
+# Longest line, in tokens (about 40-60 characters).
+max_target_length: 64
+
+# Small random rotations / slant / blur / pen thickness, so the model does not
+# memorise your scans.  Keep it on unless you have many thousands of lines.
+augment: true
+
+# Train only the decoder (the "language" half) for the first N passes.
+# 1-2 can help when you have fewer than ~200 lines.
+freeze_encoder_epochs: 0
+
+num_beams: 3
+seed: 42
+
+# "auto" = CPU with the installed (CPU-only) PyTorch; a CUDA build would use the GPU.
+device: "auto"
+
+# Refuse to train with fewer labelled HANDWRITTEN training lines than this.
+min_train_lines: 20

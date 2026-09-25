@@ -11,6 +11,7 @@ class DepartmentModel:
     name: str
     code: Optional[str] = None
     description: Optional[str] = None
+    keywords: Optional[str] = None
     is_active: bool = True
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -31,6 +32,7 @@ class DepartmentModel:
             name=data.get("name") or data.get("department_name") or "General",
             code=data.get("code"),
             description=data.get("description"),
+            keywords=data.get("keywords"),
             is_active=bool(data.get("is_active", True))
         )
 
@@ -40,5 +42,6 @@ class DepartmentModel:
             "name": self.name,
             "code": self.code,
             "description": self.description,
+            "keywords": self.keywords,
             "is_active": self.is_active
         }

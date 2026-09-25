@@ -189,10 +189,16 @@ def _department_profiles(db: Session, depts: List[models.Department]) -> Dict[in
                 bucket.append(emp.designation)
     profiles = {}
     for d in depts:
-        text = f"{d.name} department"
+        text = f"Department: {d.name}"
         if d.code:
             text += f" ({d.code})"
-        topics = _department_topics(d)
+        description = (getattr(d, "description", None) or "").strip()
+        if description:
+            text += f". Description: {description}"
+        keywords = (getattr(d, "keywords", None) or "").strip()
+        if keywords:
+            text += f". Keywords: {keywords}"
+        topics = [t for t in _department_topics(d) if t not in keywords.lower()]
         if topics:
             text += ". Handles: " + ", ".join(topics[:15])
         if roles.get(d.id):
@@ -211,9 +217,35 @@ def _extracted_department_names(fields: Optional[Dict[str, Any]]) -> List[str]:
     return names
 
 
+def _department_keywords(dept: models.Department) -> List[List[str]]:
+    """The routing keywords an administrator configured for the department
+    (Admin > Department Configuration), each as a list of tokens."""
+    raw = getattr(dept, "keywords", None) or ""
+    phrases: List[List[str]] = []
+    for part in re.split(r"[,;\n]+", raw):
+        tokens = _tokens(part)
+        if tokens and tokens not in phrases:
+            phrases.append(tokens)
+    return phrases
+
+
+def _keyword_found(phrase: List[str], text_tokens: List[str], text_token_set: set,
+                   text_prefixes: set, raw_text: str) -> bool:
+    if len(phrase) > 1:
+        return _phrase_in(phrase, text_tokens)
+    token = phrase[0]
+    if len(token) <= 3:
+        # Short words ("IT", "HR", "GST") only count as a whole word written
+        # in capitals, so ordinary words such as "it" do not match.
+        return re.search(rf"(?<![A-Za-z0-9]){re.escape(token.upper())}(?![A-Za-z0-9])", raw_text) is not None
+    return _token_found(token, text_token_set, text_prefixes)
+
+
 def _department_topics(dept: models.Department) -> List[str]:
-    """Topic keywords for a department, chosen from its name and code."""
+    """Topic keywords for a department, chosen from its name, code and
+    description."""
     name_tokens = set(_tokens(dept.name)) | set(_tokens(dept.code))
+    name_tokens |= set(_significant(_tokens(getattr(dept, "description", None) or "")))
     keywords: List[str] = []
     for triggers, words in _TOPIC_LEXICON:
         if name_tokens & triggers:
@@ -244,6 +276,16 @@ def _keyword_score(dept: models.Department, text_tokens: List[str], text_token_s
     if topics:
         hits = sum(1 for w in topics if w in text_token_set)
         score = max(score, (0.0, 0.2, 0.45, 0.65)[hits] if hits < 4 else 0.8)
+    # Keywords configured for this department count for more than the
+    # generic topic words: they were chosen for this organisation.
+    configured = _department_keywords(dept)
+    if configured:
+        hits = sum(
+            1 for phrase in configured
+            if _keyword_found(phrase, text_tokens, text_token_set, text_prefixes, raw_text)
+        )
+        if hits:
+            score = max(score, (0.0, 0.55, 0.75)[hits] if hits < 3 else 0.9)
     for ext in extracted:
         ext_sig = _significant(ext)
         if not ext_sig or not significant:
@@ -425,14 +467,17 @@ def verify_extracted_field(
 ) -> Optional[models.DocumentExtractedField]:
     """The DS corrects an extracted value.  The original stays for provenance;
     `verified_value` is what the rest of the system trusts."""
+    from sqlalchemy import func
+
+    field_name = (field_name or "").strip()
     field = db.query(models.DocumentExtractedField).filter(
         models.DocumentExtractedField.document_id == doc_id,
-        models.DocumentExtractedField.field_name == field_name,
+        func.upper(models.DocumentExtractedField.field_name) == field_name.upper(),
     ).first()
     if not field:
         field = models.DocumentExtractedField(
             document_id=doc_id,
-            field_name=field_name,
+            field_name=field_name.upper(),  # stored field names are upper case
             extracted_value=None,
             confidence=None,
         )

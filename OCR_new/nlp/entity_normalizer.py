@@ -100,9 +100,16 @@ def _normalize_date(text: str) -> str:
     """Attempt to convert a date string to YYYY-MM-DD format."""
     # Try dateutil if available (offline)
     try:
+        from datetime import datetime as _dt
         from dateutil import parser as dateparser  # type: ignore
-        dt = dateparser.parse(text, dayfirst=True)
-        return dt.strftime("%Y-%m-%d")
+        # Parse twice with different defaults: if the results differ, the text
+        # did not contain a full date (e.g. "2025-26", "annual") and dateutil
+        # filled the gaps with today's date - keep the text as written then.
+        first = dateparser.parse(text, dayfirst=True, default=_dt(2000, 1, 1))
+        second = dateparser.parse(text, dayfirst=True, default=_dt(2001, 2, 2))
+        if first == second:
+            return first.strftime("%Y-%m-%d")
+        return text
     except Exception:
         pass
 

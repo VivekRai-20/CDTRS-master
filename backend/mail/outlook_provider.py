@@ -155,14 +155,17 @@ class OutlookGraphProvider(BaseMailProvider):
             box = self.mailbox or "me"
             url = f"{self.GRAPH_BASE_URL}/users/{box}/mailFolders/{self.folder}/messages"
 
+        # Microsoft Graph OData query options.  Graph only accepts $orderby
+        # together with $filter when the ordered property is also filtered
+        # first, hence the (always true) receivedDateTime condition.
         params: Dict[str, Any] = {
-            "": max_count,
-            "": "attachments",
-            "": "id,subject,bodyPreview,body,from,receivedDateTime,hasAttachments,isRead",
-            "": "receivedDateTime desc"
+            "$top": max_count,
+            "$expand": "attachments",
+            "$select": "id,subject,bodyPreview,body,from,receivedDateTime,hasAttachments,isRead",
+            "$orderby": "receivedDateTime desc",
         }
         if unread_only:
-            params[""] = "isRead eq false"
+            params["$filter"] = "receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false"
 
         try:
             resp = requests.get(url, headers=headers, params=params, timeout=25)

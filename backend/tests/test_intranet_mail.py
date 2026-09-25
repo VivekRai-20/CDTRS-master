@@ -17,7 +17,7 @@
 #   - Sending is OFF unless you run with --send.
 #
 # Run from:
-#   C:\Projects\CDTRS-main\backend
+#   C:\CDTRS-main\backend
 #
 # Commands:
 #   python tests\test_intranet_mail.py
@@ -485,10 +485,11 @@ def main() -> int:
     incoming_ok = True
     smtp_ok = True
 
-    if not args.incoming_only:
-        incoming_ok = test_incoming(provider)
+    run_smtp = (args.send or args.all) and not args.incoming_only
 
-    if args.send or args.all:
+    incoming_ok = test_incoming(provider)
+
+    if run_smtp:
         smtp_ok = test_outgoing(
             provider,
             args.recipient,
@@ -501,19 +502,18 @@ def main() -> int:
         config_ok,
     )
 
-    if not args.incoming_only:
-        print_result(
-            "Incoming IMAP",
-            incoming_ok,
-        )
-    else:
-        print("[SKIPPED] Incoming IMAP test (--incoming-only was supplied).")
+    print_result(
+        "Incoming IMAP",
+        incoming_ok,
+    )
 
-    if args.send or args.all:
+    if run_smtp:
         print_result(
             "Outgoing SMTP",
             smtp_ok,
         )
+    elif args.incoming_only:
+        print("[SKIPPED] Outgoing SMTP send (--incoming-only was supplied).")
     else:
         print("[SKIPPED] Outgoing SMTP send.")
         print("          Run with --send --recipient <email> to test it.")

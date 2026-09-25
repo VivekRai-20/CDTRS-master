@@ -7,7 +7,7 @@ Unit tests for preprocessing modules: deskew, denoise, threshold, orientation.
 from __future__ import annotations
 
 import numpy as np
-import pytest
+import unittest
 
 from preprocessing.deskew import deskew
 from preprocessing.denoise import denoise
@@ -25,7 +25,7 @@ def _noisy_image(h=100, w=200):
     return np.clip(img.astype(np.int16) + noise, 0, 255).astype(np.uint8)
 
 
-class TestDeskew:
+class TestDeskew(unittest.TestCase):
     def test_deskew_returns_ndarray(self):
         img = _white_image()
         result = deskew(img)
@@ -43,7 +43,7 @@ class TestDeskew:
         assert result.dtype == img.dtype
 
 
-class TestDenoise:
+class TestDenoise(unittest.TestCase):
     def test_denoise_median_returns_ndarray(self):
         img = _noisy_image()
         config = {"preprocessing": {"denoise_method": "median"}}
@@ -70,7 +70,7 @@ class TestDenoise:
         assert isinstance(result, np.ndarray)
 
 
-class TestThreshold:
+class TestThreshold(unittest.TestCase):
     def test_threshold_otsu(self):
         img = _white_image()
         config = {"preprocessing": {"threshold_method": "otsu"}}

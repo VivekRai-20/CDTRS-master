@@ -49,16 +49,16 @@ def _load_config(config_path: Path) -> dict:
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    config_path = _ROOT / "config" / "config.yaml"
+    parser = _build_parser()
+    args = parser.parse_args()
+
+    config_path = Path(args.config) if args.config else _ROOT / "config" / "config.yaml"
     config = _load_config(config_path)
 
     # Setup logging as early as possible
     from utils.logger import setup_root_logger, get_logger
     setup_root_logger(config.get("logging", {}))
     log = get_logger("main")
-
-    parser = _build_parser()
-    args = parser.parse_args()
 
     log.info("Mode: %s", args.mode)
 
@@ -432,7 +432,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="python main.py",
         description=(
             "Offline OCR & Document Intelligence Engine\n"
-            "100%% offline — no internet access required at runtime."
+            "100% offline — no internet access required at runtime."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""

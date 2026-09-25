@@ -11,16 +11,15 @@ Model storage
     models/classifiers/document/classifier.pkl
     models/classifiers/document/label_encoder.pkl   (optional)
 
+    models/classifiers/document/vectorizer.pkl
+
 Training
 --------
-The model is trained via the fine-tuning framework (fineTune/).
-This module only performs inference.
+    python fineTune/training/train.py --task classification
 
-Supported algorithms (configured at training time):
-  * Logistic Regression
-  * SVM
-  * Random Forest
-  * Gradient Boosting
+(documents in fineTune/datasets/classification/<CATEGORY>/ - see
+fineTune/README.md).  This module only performs inference; DocumentProcessor
+uses it when the files exist and it is more confident than the keyword rules.
 """
 
 from __future__ import annotations
@@ -34,6 +33,7 @@ from utils.logger import get_logger
 log = get_logger(__name__)
 
 _DEFAULT_MODEL_PATH = "models/classifiers/document"
+_OCR_ROOT = Path(__file__).resolve().parents[1]
 
 
 class ModelClassifier(BaseClassifier):
@@ -61,6 +61,10 @@ class ModelClassifier(BaseClassifier):
     # ------------------------------------------------------------------ #
     # Public                                                               #
     # ------------------------------------------------------------------ #
+
+    @property
+    def is_ready(self) -> bool:
+        return self._initialized and self._model is not None and self._vectorizer is not None
 
     def classify(self, text: str) -> dict[str, Any]:
         """
@@ -98,7 +102,9 @@ class ModelClassifier(BaseClassifier):
 
     def _load_model(self) -> None:
         cls_cfg = self._config.get("classification", {})
-        model_dir = Path(cls_cfg.get("model_path", _DEFAULT_MODEL_PATH)).resolve()
+        model_dir = Path(cls_cfg.get("model_path", _DEFAULT_MODEL_PATH))
+        if not model_dir.is_absolute():
+            model_dir = _OCR_ROOT / model_dir  # relative to OCR_new, not the working folder
 
         model_file = model_dir / "classifier.pkl"
         vectorizer_file = model_dir / "vectorizer.pkl"
@@ -115,16 +121,12 @@ class ModelClassifier(BaseClassifier):
             with open(model_file, "rb") as fh:
                 self._model = pickle.load(fh)
 
-            if vectorizer_file.exists():
-                with open(vectorizer_file, "rb") as fh:
-                    self._vectorizer = pickle.load(fh)
-            else:
-                # Build a simple TF-IDF vectorizer as placeholder
-                from sklearn.feature_extraction.text import TfidfVectorizer
-                self._vectorizer = TfidfVectorizer()
-                log.warning(
-                    "No vectorizer found. Classification may be inaccurate."
-                )
+            if not vectorizer_file.exists():
+                log.warning("'%s' is missing; the document classifier is not used.", vectorizer_file)
+                self._model = None
+                return
+            with open(vectorizer_file, "rb") as fh:
+                self._vectorizer = pickle.load(fh)
 
             label_file = model_dir / "label_encoder.pkl"
             if label_file.exists():

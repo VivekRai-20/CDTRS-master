@@ -5,9 +5,10 @@ Local FastAPI application for the OCR & Document Intelligence Engine.
 
 Usage
 -----
-Start the local service::
+Start the local service from the OCR_new folder (use a port the CDTRS
+backend is not using)::
 
-    uvicorn api.app:app --host 127.0.0.1 --port 8000
+    python -m uvicorn api.app:app --host 127.0.0.1 --port 8010
 
 Endpoints
 ---------
@@ -25,6 +26,7 @@ IMPORTANT: This module is optional.  The core engine works without it.
 
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -34,8 +36,8 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
 except ImportError:
     raise ImportError(
-        "FastAPI and uvicorn are required to run the local API.\n"
-        "Install with:  pip install fastapi uvicorn"
+        "FastAPI and uvicorn are required to run the local API "
+        "(both are pinned in requirements.txt)."
     )
 
 from api.schemas import (
@@ -47,7 +49,7 @@ from api.schemas import (
     HealthResponse,
 )
 from utils.logger import get_logger, setup_root_logger
-from utils.offline_checker import OfflineChecker
+from utils.offline_checker import check_model_dirs, check_patterns_file
 
 setup_root_logger()
 log = get_logger(__name__)
@@ -98,16 +100,34 @@ _CONFIG: dict[str, Any] = _load_config()
 # Endpoints
 # ──────────────────────────────────────────────────────────────────────────────
 
+_PROCESSOR = None
+_PROCESS_LOCK = threading.Lock()  # one document at a time on the shared processor
+
+
+def _processor(overrides: dict[str, Any] | None = None):
+    """One DocumentProcessor for all requests (models load once); a separate
+    one when a request overrides settings."""
+    global _PROCESSOR
+    from document_intelligence import DocumentProcessor
+
+    if overrides:
+        cfg = dict(_CONFIG)
+        cfg.update(overrides)
+        return DocumentProcessor(config=cfg)
+    if _PROCESSOR is None:
+        _PROCESSOR = DocumentProcessor(config=_CONFIG)
+    return _PROCESSOR
+
+
 @app.get("/health", response_model=HealthResponse, tags=["system"])
 def health_check() -> HealthResponse:
     """Check offline readiness and model availability."""
-    checker = OfflineChecker(_CONFIG)
-    check_result = checker.check()
+    paddle_ok, _missing = check_model_dirs(_CONFIG)
     models_available = {
-        k: v for k, v in check_result.items()
-        if isinstance(v, bool)
+        "paddleocr": paddle_ok,
+        "patterns_file": check_patterns_file(_CONFIG),
     }
-    all_ok = all(models_available.values()) if models_available else True
+    all_ok = all(models_available.values())
     return HealthResponse(
         status="READY" if all_ok else "DEGRADED",
         offline_mode=True,
@@ -117,23 +137,16 @@ def health_check() -> HealthResponse:
 
 @app.post("/ocr", tags=["ocr"])
 def run_ocr(request: OCRRequest) -> dict[str, Any]:
-    """Run OCR-only pipeline on a document file."""
+    """OCR only (the language comes from config.yaml; the request field is ignored)."""
     t0 = time.perf_counter()
     file_path = Path(request.file_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
-
     try:
-        from ocr.paddle_engine import PaddleOCREngine
-        from ocr.ocr_pipeline import OCRPipeline
-
-        engine = PaddleOCREngine()
-        engine.initialize(_CONFIG)
-        pipeline = OCRPipeline(engine=engine, config=_CONFIG)
-        result = pipeline.process(file_path)
-        result["api_elapsed_s"] = round(time.perf_counter() - t0, 3)
+        with _PROCESS_LOCK:
+            result = _processor().process(file_path, mode="ocr").to_dict()
+        result.setdefault("metadata", {})["api_elapsed_s"] = round(time.perf_counter() - t0, 3)
         return result
-
     except Exception as exc:
         log.error("OCR endpoint error: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
@@ -170,75 +183,21 @@ def extract_entities(request: ExtractRequest) -> dict[str, Any]:
 @app.post("/process", tags=["pipeline"])
 def process_document(request: ProcessRequest) -> dict[str, Any]:
     """
-    Run the full document intelligence pipeline.
-
-    This is the primary endpoint — it chains OCR, layout analysis,
-    text-type detection, NER, classification, and extraction.
+    Run the document intelligence pipeline (the same DocumentProcessor the
+    command line and CDTRS use).  mode: ocr | understand | classify | extract | full.
     """
     t0 = time.perf_counter()
     file_path = Path(request.file_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
-
-    cfg = dict(_CONFIG)
-    if request.config_overrides:
-        cfg.update(request.config_overrides)
-
+    mode = request.mode.lower()
+    if mode not in ("ocr", "understand", "classify", "extract", "full"):
+        raise HTTPException(status_code=422, detail=f"Unknown mode '{request.mode}'.")
     try:
-        # OCR
-        from ocr.paddle_engine import PaddleOCREngine
-        from ocr.ocr_pipeline import OCRPipeline
-
-        engine = PaddleOCREngine()
-        engine.initialize(cfg)
-        pipeline = OCRPipeline(engine=engine, config=cfg)
-        ocr_result = pipeline.process(file_path)
-        full_text = ocr_result.get("full_text", "")
-
-        result: dict[str, Any] = {
-            "document": {
-                "filename":    file_path.name,
-                "pages":       ocr_result.get("pages", 1),
-                "source_type": ocr_result.get("doc_type", "UNKNOWN"),
-            },
-            "ocr": {
-                "full_text": full_text,
-                "regions":   ocr_result.get("regions", []),
-            },
-        }
-
-        mode = request.mode.lower()
-
-        # Classification
-        if mode in ("classify", "full"):
-            from classification.rule_classifier import RuleClassifier
-            clf = RuleClassifier(config=cfg)
-            result["classification"] = clf.classify(full_text)
-
-        # NER + Extraction
-        if mode in ("extract", "full"):
-            from extraction.entity_extractor import EntityExtractor
-            extractor = EntityExtractor(config=cfg)
-            ext = extractor.extract(full_text)
-            result["entities"] = ext.get("entities", [])
-            result["extracted_fields"] = ext.get("extracted_fields", {})
-
-        # Semantic
-        if mode in ("understand", "full"):
-            try:
-                from semantic.semantic_pipeline import SemanticPipeline
-                sem = SemanticPipeline(config=cfg)
-                result["semantic"] = sem.process(full_text)
-            except Exception as exc:
-                log.warning("Semantic processing skipped: %s", exc)
-                result["semantic"] = {"enabled": False, "error": str(exc)}
-
-        result["metadata"] = {
-            "mode":       mode,
-            "elapsed_s":  round(time.perf_counter() - t0, 3),
-        }
+        with _PROCESS_LOCK:
+            result = _processor(request.config_overrides).process(file_path, mode=mode).to_dict()
+        result.setdefault("metadata", {})["api_elapsed_s"] = round(time.perf_counter() - t0, 3)
         return result
-
     except Exception as exc:
         log.error("Process endpoint error: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))

@@ -69,6 +69,8 @@ def setup_root_logger(config: Optional[dict] = None) -> None:
     # --- File handler (optional) ----------------------------------------
     if config.get("log_to_file", True):
         log_dir = Path(config.get("log_dir", "output"))
+        if not log_dir.is_absolute():  # relative to OCR_new, not the current folder
+            log_dir = Path(__file__).resolve().parents[1] / log_dir
         log_dir.mkdir(parents=True, exist_ok=True)
         log_file = log_dir / config.get("log_file", "ocr_system.log")
 

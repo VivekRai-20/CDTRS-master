@@ -4,7 +4,7 @@ CDTRS Mail Attachment Test
 
 Run from the CDTRS backend project root:
 
-    python test.py
+    python tests/outlook_test.py
 
 This test checks:
 

@@ -147,7 +147,9 @@ class RuleClassifier(BaseClassifier):
             self._config.get("classification", {}).get(
                 "rules_file", "config/classification_rules.yaml"
             )
-        ).resolve()
+        )
+        if not rules_file.is_absolute():  # relative to OCR_new, not the current folder
+            rules_file = Path(__file__).resolve().parents[1] / rules_file
 
         if rules_file.exists():
             try:

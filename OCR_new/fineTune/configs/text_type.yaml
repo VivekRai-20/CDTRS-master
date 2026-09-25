@@ -1,0 +1,7 @@
+# Settings for:  python fineTune/training/train.py --task text_type
+# (the printed / handwritten detector; a Random Forest on line-shape features)
+
+n_estimators: 300
+max_depth: null            # null = no limit
+min_lines_per_type: 20     # need at least this many HANDWRITTEN and PRINTED lines
+seed: 42

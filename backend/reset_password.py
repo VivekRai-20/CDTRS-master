@@ -4,7 +4,7 @@ CDTRS User Password Reset Utility
 Usage:
     python backend/reset_password.py <username> <new_password>
 Example:
-    python backend/reset_password.py ds_user MyNewSecretPassword@2026
+    python backend/reset_password.py exec_user MyNewSecretPassword@2026
 """
 
 import os

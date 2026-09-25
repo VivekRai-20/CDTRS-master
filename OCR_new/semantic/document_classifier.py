@@ -178,7 +178,9 @@ class SemanticDocumentClassifier:
         cat_file = cls_cfg.get("categories_file", "")
 
         if cat_file:
-            cat_path = Path(cat_file).resolve()
+            cat_path = Path(cat_file)
+            if not cat_path.is_absolute():  # relative to OCR_new, not the current folder
+                cat_path = Path(__file__).resolve().parents[1] / cat_path
             if cat_path.exists():
                 try:
                     import yaml

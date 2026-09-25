@@ -5,18 +5,15 @@ Auto-detect and correct page orientation (0°, 90°, 180°, 270°).
 
 Strategy
 --------
-1.  Primary   – Use Tesseract OSD (Orientation and Script Detection) when
-                Tesseract is installed.  This is the most reliable approach.
-2.  Fallback  – Heuristic based on text-region aspect ratios detected by
-                OpenCV contour analysis.  No external tools required.
+Heuristic based on text-region aspect ratios detected by OpenCV contour
+analysis (0 / 90 degrees).  Upside-down (180 degree) text lines are handled
+later by PaddleOCR's text-line orientation classifier.
 
-The module never downloads anything.
+This step is off by default (preprocessing.auto_rotate in config.yaml).
+The module never downloads anything and uses no external programs.
 """
 
 from __future__ import annotations
-
-import subprocess
-import shutil
 
 import cv2
 import numpy as np
@@ -64,50 +61,7 @@ def _detect_orientation_angle(image: np.ndarray, config: dict) -> int:
     Return the number of degrees to rotate the image clockwise so that
     it is correctly oriented.  Returns 0 if already correct.
     """
-    # --- 1. Tesseract OSD (preferred) ---
-    if shutil.which("tesseract") is not None:
-        angle = _tesseract_osd(image)
-        if angle is not None:
-            return angle
-
-    # --- 2. Heuristic fallback ---
     return _heuristic_orientation(image)
-
-
-def _tesseract_osd(image: np.ndarray) -> int | None:
-    """
-    Run ``tesseract --psm 0`` (OSD only) and parse the rotation angle.
-
-    Returns None if Tesseract is unavailable or OSD fails.
-    """
-    try:
-        import tempfile, os
-        from pathlib import Path
-
-        # Write image to a temp file
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-            tmp_path = tmp.name
-        cv2.imwrite(tmp_path, image)
-
-        result = subprocess.run(
-            ["tesseract", tmp_path, "stdout", "--psm", "0", "-l", "osd"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        os.unlink(tmp_path)
-
-        for line in result.stdout.splitlines():
-            if line.startswith("Rotate:"):
-                angle = int(line.split(":")[1].strip())
-                if angle in _VALID_ANGLES:
-                    log.debug("Tesseract OSD reports rotation: %d°", angle)
-                    return angle
-
-    except Exception as exc:
-        log.debug("Tesseract OSD failed: %s", exc)
-
-    return None
 
 
 def _heuristic_orientation(image: np.ndarray) -> int:
@@ -115,7 +69,7 @@ def _heuristic_orientation(image: np.ndarray) -> int:
     Very simple heuristic: count text-like contours and check if more
     contours are horizontal (portrait) or vertical (landscape).
 
-    Returns 0 or 90.  Cannot detect 180° without Tesseract.
+    Returns 0 or 90 (180 degrees cannot be told apart this way).
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image.copy()
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)

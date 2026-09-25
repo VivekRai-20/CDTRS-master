@@ -8,13 +8,13 @@ Unit tests for the semantic module.
 from __future__ import annotations
 
 import numpy as np
-import pytest
+import unittest
 
 from semantic.semantic_similarity import cosine_similarity, rank_by_similarity, batch_similarity_matrix
 from semantic.keyword_extractor import extract_keywords
 
 
-class TestCosineSimilarity:
+class TestCosineSimilarity(unittest.TestCase):
     def test_identical_vectors(self):
         a = np.array([1.0, 0.0, 0.0])
         assert abs(cosine_similarity(a, a) - 1.0) < 1e-6
@@ -36,7 +36,7 @@ class TestCosineSimilarity:
         assert sim > 0.98
 
 
-class TestRankBySimilarity:
+class TestRankBySimilarity(unittest.TestCase):
     def test_ranking_order(self):
         query = np.array([1.0, 0.0])
         candidates = [
@@ -63,7 +63,7 @@ class TestRankBySimilarity:
         assert result == []
 
 
-class TestBatchSimilarityMatrix:
+class TestBatchSimilarityMatrix(unittest.TestCase):
     def test_shape(self):
         A = np.random.rand(3, 4)
         B = np.random.rand(5, 4)
@@ -76,7 +76,7 @@ class TestBatchSimilarityMatrix:
         assert all(abs(M[i, i] - 1.0) < 1e-6 for i in range(4))
 
 
-class TestKeywordExtractor:
+class TestKeywordExtractor(unittest.TestCase):
     def test_extract_keywords_returns_list(self):
         text = "The quick brown fox jumps over the lazy dog repeatedly."
         result = extract_keywords(text, top_n=5)

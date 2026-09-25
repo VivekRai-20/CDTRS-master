@@ -8,12 +8,12 @@ Unit tests for the handwriting OCR engine.
 from __future__ import annotations
 
 import numpy as np
-import pytest
+import unittest
 
 from ocr.handwriting_engine import HandwritingEngine
 
 
-class TestHandwritingEngine:
+class TestHandwritingEngine(unittest.TestCase):
     def test_engine_name(self):
         engine = HandwritingEngine()
         assert engine.ENGINE_NAME == "HandwritingEngine"
@@ -34,9 +34,9 @@ class TestHandwritingEngine:
                 "model_path": "/nonexistent/path/that/does/not/exist",
             }
         }
-        with pytest.raises(FileNotFoundError) as exc_info:
+        with self.assertRaises(FileNotFoundError) as exc_info:
             engine.initialize(config)
-        assert "Automatic downloads are disabled" in str(exc_info.value)
+        assert "Automatic downloads are disabled" in str(exc_info.exception)
 
     def test_initialize_disabled_skips_loading(self):
         """If handwriting is disabled in config, no error should be raised."""

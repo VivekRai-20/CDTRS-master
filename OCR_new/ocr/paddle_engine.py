@@ -21,6 +21,7 @@ correct parameters automatically.
 from __future__ import annotations
 
 import inspect
+import math
 import time
 from pathlib import Path
 from typing import Any
@@ -178,6 +179,10 @@ class PaddleEngine(BaseOCREngine):
                     kwargs[arg] = cast(paddle_cfg[cfg_key])
             if "drop_score" in valid_params and "drop_score" in paddle_cfg:
                 kwargs["drop_score"] = float(paddle_cfg["drop_score"])
+            # Paddle keeps working memory for every input shape it has seen,
+            # and a batch of long text lines needs gigabytes.  One line at a
+            # time keeps that small (see _limit_recognition_shapes).
+            kwargs["rec_batch_num"] = int(paddle_cfg.get("rec_batch_num", 1))
             if det_dir and "det_model_dir" in valid_params:
                 kwargs["det_model_dir"] = det_dir
             if rec_dir and "rec_model_dir" in valid_params:
@@ -188,7 +193,56 @@ class PaddleEngine(BaseOCREngine):
         log.info("Initialising PaddleOCR %s (version=%s, lang=%s) …", version_str, ocr_version, lang)
         log.debug("Constructor kwargs: %s", kwargs)
         self._ocr = PaddleOCR(**kwargs)
+        if self._major_version < 3:
+            self._limit_recognition_shapes(paddle_cfg)
         log.info("PaddleOCR initialised successfully.")
+
+    # ------------------------------------------------------------------ #
+    # Memory: bounded set of input shapes                                  #
+    # ------------------------------------------------------------------ #
+
+    def _limit_recognition_shapes(self, paddle_cfg: dict) -> None:
+        """Round the recogniser's input width up to a few fixed sizes.
+
+        Paddle Inference keeps the buffers of every input shape it has run,
+        and never frees them.  PaddleOCR sizes each text line to its own
+        width, so every new line length costs memory until the process runs
+        out (a busy server was killed this way).  Using widths that are
+        multiples of ``rec_ratio_step`` x 48 px (and at most
+        ``rec_max_ratio`` x 48 px - longer lines are narrowed to fit) keeps
+        the number of shapes, and so the memory, small and fixed.
+        """
+        recognizer = getattr(self._ocr, "text_recognizer", None)
+        original = getattr(recognizer, "resize_norm_img", None)
+        if recognizer is None or original is None:
+            return
+        step = float(paddle_cfg.get("rec_ratio_step", 8))
+        max_ratio = float(paddle_cfg.get("rec_max_ratio", 32))
+        if step <= 0:
+            return
+
+        def bucketed(img, max_wh_ratio):
+            ratio = min(max(float(max_wh_ratio), step), max_ratio)
+            return original(img, math.ceil(ratio / step) * step)
+
+        recognizer.resize_norm_img = bucketed
+
+    @staticmethod
+    def _pad_for_detection(image: np.ndarray, limit: int) -> np.ndarray:
+        """Pad the page (white, right/bottom) to one of three square sizes so
+        text detection always sees the same few input shapes.  Coordinates of
+        detected text are unchanged because nothing moves."""
+        h, w = image.shape[:2]
+        side = max(h, w)
+        buckets = (limit // 3, 2 * limit // 3, limit)
+        # Pages larger than the limit become a square that PaddleOCR then
+        # scales down to limit x limit - again the same shape every time.
+        target = next((b for b in buckets if side <= b), side)
+        if h == target and w == target:
+            return image
+        fill = 255 if image.ndim == 2 else (255,) * image.shape[2]
+        import cv2
+        return cv2.copyMakeBorder(image, 0, target - h, 0, target - w, cv2.BORDER_CONSTANT, value=fill)
 
     # ------------------------------------------------------------------ #
     # Recognition                                                          #
@@ -207,7 +261,10 @@ class PaddleEngine(BaseOCREngine):
                 "PaddleEngine.initialize() must be called before recognize()."
             )
 
-        drop_score: float = self._config.get("paddleocr", {}).get("drop_score", 0.5)
+        paddle_cfg = self._config.get("paddleocr", {})
+        drop_score: float = paddle_cfg.get("drop_score", 0.5)
+        if self._major_version < 3 and paddle_cfg.get("det_square_pad", True):
+            image = self._pad_for_detection(image, int(paddle_cfg.get("text_det_limit_side_len", 960)))
 
         t0 = time.perf_counter()
 

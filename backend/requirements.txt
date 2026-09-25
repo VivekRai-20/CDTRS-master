@@ -68,3 +68,12 @@ sentence-transformers==5.6.1
 transformers==5.15.0
 tokenizers==0.22.2
 torch==2.13.0
+# Also used by the backend (pinned in imp.txt):
+python-dateutil==2.9.0.post0
+openpyxl==3.1.5
+pyarrow==24.0.0
+pdf2image==1.17.0
+torchvision==0.28.0
+sentencepiece==0.2.2
+huggingface_hub==1.27.0
+editdistance==0.8.0

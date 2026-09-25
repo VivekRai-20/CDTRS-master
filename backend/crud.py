@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import os
 import threading
 from datetime import datetime, timedelta, date
@@ -31,9 +32,13 @@ from models import (
     WorkContextType,
 )
 
-SECRET_KEY = os.getenv("SECRET_KEY", "cdtrs-super-secret-key-change-in-production")
+SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
+if not SECRET_KEY or "change" in SECRET_KEY.lower():
+    print("[SECURITY WARN] SECRET_KEY in backend/.env is missing or still the example value; "
+          "set a long random value (see backend/.env.example).", flush=True)
+    SECRET_KEY = SECRET_KEY or "cdtrs-super-secret-key-change-in-production"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "500"))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
 
 
 # =========================================================
@@ -454,6 +459,13 @@ def process_intake_to_document(
     msg = get_incoming_message_by_id(db, msg_id)
     if not msg:
         return None
+    existing = (
+        db.query(models.Document).filter(models.Document.source_message_id == msg.id).first()
+    )
+    if existing is not None:
+        raise ValueError(
+            f"This message was already registered as document {existing.reference_no}."
+        )
 
     doc_create = schemas.DocumentCreate(
         title=proc_req.title or msg.subject or f"Incoming Message #{msg.id}",
@@ -643,6 +655,49 @@ def update_document_metadata(
 
 def compute_checksum(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def save_file_unique(dest_dir, filename: Optional[str], contents: bytes):
+    """Write *contents* into *dest_dir* without replacing an existing file.
+
+    A second file with the same name is stored as ``name_1.ext``, then
+    ``name_2.ext`` and so on, so two attachments that happen to share a file
+    name never overwrite each other.  Returns the Path that was written."""
+    from pathlib import Path
+
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    name = Path(filename or "").name.strip() or "attachment"
+    stem, suffix = Path(name).stem or "attachment", Path(name).suffix
+    counter = 0
+    while True:
+        candidate = dest_dir / (name if counter == 0 else f"{stem}_{counter}{suffix}")
+        try:
+            # "x" = create only; fails if another upload took the name first.
+            with open(candidate, "xb") as fh:
+                fh.write(contents)
+            return candidate
+        except FileExistsError:
+            counter += 1
+
+
+def find_duplicate_attachment(
+    db: Session,
+    checksum: str,
+    document_id: Optional[int] = None,
+    attachment_type: Optional[models.AttachmentType] = None,
+) -> Optional[models.Attachment]:
+    """An attachment already stored with exactly the same content (SHA-256)."""
+    if not checksum:
+        return None
+    query = db.query(models.Attachment).filter(models.Attachment.checksum == checksum)
+    if document_id is not None:
+        query = query.filter(models.Attachment.document_id == document_id)
+    else:
+        query = query.filter(models.Attachment.document_id.isnot(None))
+    if attachment_type is not None:
+        query = query.filter(models.Attachment.attachment_type == attachment_type)
+    return query.order_by(models.Attachment.id).first()
 
 
 def create_attachment(
@@ -928,10 +983,34 @@ def create_admin_user(db: Session, data: schemas.AdminUserCreate, performed_by_u
         is_active=True,
     )
     db.add(user)
+    db.flush()
+    _add_default_context(db, user)
     db.commit()
     db.refresh(user)
     log_audit_event(db, performed_by_user_id, "USER_CREATED", "user", user.id, f"Created account {user.username}")
     return user
+
+
+def _add_default_context(db: Session, user: models.User) -> None:
+    """A new account gets the work context of its role, so it can log in
+    straight away (more can be added under the user's contexts).  EMPLOYEE /
+    HOD need a department; a TSO is designated only when there is none."""
+    role = UserRole(user.role.value if hasattr(user.role, "value") else user.role)
+    if role == UserRole.TSO:
+        has_tso = db.query(models.WorkContextMembership).filter(
+            models.WorkContextMembership.context_type == WorkContextType.TSO,
+            models.WorkContextMembership.is_active.is_(True),
+        ).first()
+        if has_tso is None:
+            workflow.set_active_tso(db, user.id, user.department_id)
+        return
+    ctype = WorkContextType(role.value)
+    department_id = user.department_id if ctype in (WorkContextType.EMPLOYEE, WorkContextType.HOD) else None
+    if ctype in (WorkContextType.EMPLOYEE, WorkContextType.HOD) and department_id is None:
+        return
+    db.add(models.WorkContextMembership(
+        user_id=user.id, context_type=ctype, department_id=department_id, is_active=True,
+    ))
 
 
 def update_admin_user(
@@ -981,11 +1060,31 @@ def toggle_user_active(db: Session, user_id: int, performed_by_user_id: Optional
     return user.is_active
 
 
+def normalize_keywords(value: Any) -> Optional[str]:
+    """Keywords are stored as one comma-separated line ("salary, budget, GST").
+    Accepts a string (commas, semicolons or new lines) or a list."""
+    if value is None:
+        return None
+    parts = value if isinstance(value, (list, tuple)) else re.split(r"[,;\n]+", str(value))
+    seen: List[str] = []
+    for part in parts:
+        word = " ".join(str(part).split())
+        if word and word.lower() not in (w.lower() for w in seen):
+            seen.append(word)
+    return ", ".join(seen) or None
+
+
 def create_admin_department(db: Session, dept: schemas.DepartmentCreate, performed_by_user_id: Optional[int] = None) -> models.Department:
     existing = db.query(models.Department).filter(models.Department.name == dept.name).first()
     if existing:
         raise ValueError(f"Department '{dept.name}' already exists.")
-    department = models.Department(name=dept.name, code=dept.code, is_active=True)
+    department = models.Department(
+        name=dept.name,
+        code=dept.code or None,
+        description=(dept.description or "").strip() or None,
+        keywords=normalize_keywords(dept.keywords),
+        is_active=True,
+    )
     db.add(department)
     db.commit()
     db.refresh(department)
@@ -1002,6 +1101,11 @@ def update_admin_department(
     for field in ("name", "code", "is_active"):
         if field in data and data[field] is not None:
             setattr(dept, field, data[field])
+    # Description / keywords may be cleared, so an empty value is applied too.
+    if "description" in data:
+        dept.description = (data.get("description") or "").strip() or None
+    if "keywords" in data:
+        dept.keywords = normalize_keywords(data.get("keywords"))
     db.commit()
     db.refresh(dept)
     log_audit_event(db, performed_by_user_id, "DEPARTMENT_UPDATED", "department", dept.id, f"Updated {dept.name}")
@@ -1059,30 +1163,80 @@ def ensure_default_settings(db: Session) -> None:
 # =========================================================
 
 def _resolve_department(db: Session, token: Optional[str]) -> Optional[models.Department]:
-    """Seed files refer to departments by code OR name; accept both."""
+    """Seed and import files refer to departments by code OR name (any case)."""
     if not token:
         return None
+    from sqlalchemy import func
+
+    token = str(token).strip().lower()
     return (
         db.query(models.Department)
-        .filter((models.Department.code == token) | (models.Department.name == token))
+        .filter((func.lower(models.Department.code) == token) | (func.lower(models.Department.name) == token))
         .first()
     )
 
 
 def seed_data(db: Session) -> None:
-    """Create departments, accounts and work contexts from
-    backend/data/seed_data.json."""
+    """Create the departments, accounts and work contexts of
+    backend/data/seed_data.json that do not exist yet.  Runs at every backend
+    start, so it never changes what already exists: an administrator's edits,
+    deactivated accounts, revoked contexts and the chosen TSO are left alone."""
     json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "seed_data.json")
     payload: Dict[str, Any] = {}
     if os.path.exists(json_path):
         with open(json_path, "r", encoding="utf-8") as f:
             payload = json.load(f)
+    apply_seed_payload(db, payload, update_existing=False)
 
+
+def apply_seed_payload(db: Session, payload: Dict[str, Any], update_existing: bool = True) -> None:
+    """Create departments, accounts and work contexts from a payload shaped
+    like seed_data.json ({"departments": [...], "system_users": [...],
+    "employees": [...]}).
+
+    update_existing=False (startup seeding): only missing records are added.
+    update_existing=True (import_from_csv.py): existing records are updated
+    from the payload, listed contexts are re-activated and a listed TSO
+    becomes THE TSO.  Passwords of existing accounts are never changed.
+
+    Everything is written in one transaction: on any error nothing is saved.
+    """
+    try:
+        _apply_seed_payload(db, payload, update_existing)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    ensure_default_settings(db)
+    _seed_summary(db)
+
+
+def _apply_seed_payload(db: Session, payload: Dict[str, Any], update_existing: bool) -> None:
     # --- departments ---
     for d in payload.get("departments", []):
-        if not db.query(models.Department).filter(models.Department.name == d["name"]).first():
-            db.add(models.Department(name=d["name"], code=d.get("code"), is_active=True))
-    db.commit()
+        dept = _resolve_department(db, d["name"]) or (_resolve_department(db, d.get("code")) if d.get("code") else None)
+        if not dept:
+            db.add(models.Department(
+                name=d["name"], code=d.get("code"), is_active=True,
+                description=d.get("description"), keywords=normalize_keywords(d.get("keywords")),
+            ))
+            db.flush()
+            continue
+        if update_existing:
+            if d.get("description"):
+                dept.description = d["description"]
+            if d.get("keywords"):
+                dept.keywords = normalize_keywords(d["keywords"])
+            if d.get("code") and not dept.code:
+                dept.code = d["code"]
+        else:
+            # Fill in routing descriptions / keywords once; never overwrite
+            # what an administrator has entered.
+            if not dept.description and d.get("description"):
+                dept.description = d["description"]
+            if not dept.keywords and d.get("keywords"):
+                dept.keywords = normalize_keywords(d["keywords"])
+    db.flush()
 
     # --- employee directory ---
     for emp in payload.get("employees", []):
@@ -1092,7 +1246,7 @@ def seed_data(db: Session) -> None:
             raise ValueError(f"Unknown department '{emp.get('department')}' for employee {code}.")
         record = db.query(models.Employee).filter(models.Employee.employee_code == code).first()
         if not record:
-            record = models.Employee(
+            db.add(models.Employee(
                 employee_code=code,
                 full_name=emp.get("full_name"),
                 department_id=dept.id,
@@ -1100,12 +1254,15 @@ def seed_data(db: Session) -> None:
                 email=emp.get("email"),
                 outlook_email=emp.get("outlook_email"),
                 gov_email=emp.get("gov_email"),
-            )
-            db.add(record)
-        else:
+            ))
+        elif update_existing:
             record.department_id = dept.id
-            record.email = emp.get("email") or record.email
-    db.commit()
+            record.full_name = emp.get("full_name") or record.full_name
+            record.designation = emp.get("designation") or record.designation
+            for column in ("email", "outlook_email", "gov_email"):
+                if emp.get(column):
+                    setattr(record, column, emp[column])
+    db.flush()
 
     # --- accounts ---
     definitions: List[Dict[str, Any]] = []
@@ -1114,10 +1271,13 @@ def seed_data(db: Session) -> None:
     for emp in payload.get("employees", []):
         definitions.append({**emp, "_role": UserRole.EMPLOYEE})
 
+    created: set = set()
     for spec in definitions:
         username = spec.get("username")
         if not username:
             continue
+        if spec.get("department") and not _resolve_department(db, spec["department"]):
+            raise ValueError(f"Unknown department '{spec['department']}' for account {username}.")
         dept = _resolve_department(db, spec.get("department"))
         user = get_user_by_username(db, username)
         if not user:
@@ -1136,11 +1296,15 @@ def seed_data(db: Session) -> None:
             )
             db.add(user)
             db.flush()
-        else:
+            created.add(user.id)
+        elif update_existing:
             user.full_name = spec.get("full_name") or user.full_name
             user.role = spec["_role"]
             user.designation = spec.get("designation") or user.designation
             user.employee_code = spec.get("employee_code") or user.employee_code
+            for column in ("email", "outlook_email", "gov_email"):
+                if spec.get(column):
+                    setattr(user, column, spec[column])
             if dept:
                 user.department_id = dept.id
 
@@ -1153,7 +1317,7 @@ def seed_data(db: Session) -> None:
             )
             if record and not record.user_id:
                 record.user_id = user.id
-    db.commit()
+    db.flush()
 
     # --- work contexts ---
     default_contexts = {
@@ -1169,6 +1333,9 @@ def seed_data(db: Session) -> None:
     for spec in definitions:
         user = get_user_by_username(db, spec.get("username", ""))
         if not user:
+            continue
+        # Startup seeding only gives contexts to accounts it has just created.
+        if not update_existing and user.id not in created:
             continue
         context_defs = spec.get("contexts") or default_contexts.get(spec["_role"], [])
         for cdef in context_defs:
@@ -1190,8 +1357,15 @@ def seed_data(db: Session) -> None:
                 department_id = user.department_id
 
             if ctype == WorkContextType.TSO:
-                # Exactly one TSO organisation-wide.
-                if not tso_seeded:
+                # Exactly one TSO organisation-wide.  Startup seeding only
+                # designates one when there is none.
+                active_tso = (
+                    db.query(models.WorkContextMembership)
+                    .filter(models.WorkContextMembership.context_type == WorkContextType.TSO,
+                            models.WorkContextMembership.is_active.is_(True))
+                    .first()
+                )
+                if not tso_seeded and (update_existing or active_tso is None) and user.is_active:
                     workflow.set_active_tso(db, user.id, department_id)
                     tso_seeded = True
                 continue
@@ -1206,7 +1380,8 @@ def seed_data(db: Session) -> None:
                 .first()
             )
             if existing:
-                existing.is_active = True
+                if update_existing:
+                    existing.is_active = True
             else:
                 db.add(models.WorkContextMembership(
                     user_id=user.id,
@@ -1214,10 +1389,10 @@ def seed_data(db: Session) -> None:
                     department_id=department_id,
                     is_active=True,
                 ))
-    db.commit()
+                db.flush()
 
-    ensure_default_settings(db)
 
+def _seed_summary(db: Session) -> None:
     dept_count = db.query(models.Department).count()
     user_count = db.query(models.User).count()
     ctx_count = db.query(models.WorkContextMembership).filter(

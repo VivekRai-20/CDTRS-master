@@ -1,5 +1,15 @@
+"""
+Sends ONE real test e-mail through Microsoft Graph (Outlook).
+
+    python tests/test_provider.py recipient@example.com
+"""
 import sys
 from pathlib import Path
+
+if len(sys.argv) < 2 or "@" not in sys.argv[1]:
+    print("Usage: python tests/test_provider.py <recipient e-mail address>")
+    raise SystemExit(2)
+RECIPIENT = sys.argv[1]
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -39,8 +49,8 @@ print("Token length:", len(token))
 print("\n[3] Preparing test email...")
 
 email = OutgoingEmailDTO(
-    recipient_email="zodgepratiksha575@gmail.com",
-    recipient_name="Pratiksha",
+    recipient_email=RECIPIENT,
+    recipient_name=RECIPIENT.split("@")[0],
     subject="CDTRS Graph Send Test",
     body_text=(
         "This is a test email from the CDTRS OutlookGraphProvider. "

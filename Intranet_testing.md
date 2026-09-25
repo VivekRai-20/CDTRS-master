@@ -1,1120 +1,467 @@
-CDTRS Intranet Mail — Complete Testing Guide
+# CDTRS on the office intranet: LAN setup and mail testing
 
-From zero to full test
+This guide is for the office IT person who sets up CDTRS on the office network and tests the office mail integration. It assumes CDTRS is already installed and working on one PC (PostgreSQL, Python 3.12 and the packages from `imp.txt`), in `C:\CDTRS-main`.
 
-This guide is for testing the intranet/local IMAP + SMTP mail integration in CDTRS from beginning to end.
+All backend settings are in **`backend\.env`**. There is no project-wide `.env` in the project root any more. The desktop app has its own **`frontend\.env`**.
 
-Your project structure
+---
 
-C:\Projects\CDTRS-main\
-│
-├── .env                         ← ROOT .env
-│
-├── backend\
-│   ├── main.py
-│   ├── models.py
-│   ├── schemas.py
-│   ├── mail\
-│   │   ├── service.py
-│   │   ├── intranet_provider.py
-│   │   ├── outlook_provider.py
-│   │   └── base.py
-│   │
-│   └── tests\
-│       └── test_intranet_mail.py
-│
-└── ...
+## 1. What "intranet" means here
 
-1. First understand what is being tested
+```
+ +---------------------------------+   office LAN   +---------------------------+
+ | SERVER PC                       |     (HTTP)     | CLIENT PCs                |
+ |  PostgreSQL (database "cdtrs")  |                |  CDTRS desktop app        |
+ |  CDTRS backend, port 8000  <----+----------------+  (start_frontend.bat)     |
+ +----------------+----------------+                +---------------------------+
+                  |
+                  | IMAP in / SMTP out   (optional)
+                  v
+ +---------------------------------------------------------+
+ | OFFICE MAIL SERVER                                      |
+ |  DS mailbox     -> CDTRS reads new documents over IMAP  |
+ |  CDTRS mailbox  -> CDTRS sends notifications over SMTP  |
+ +---------------------------------------------------------+
+```
 
-The intranet mail integration has two separate directions:
+- **One server PC** runs PostgreSQL and the CDTRS backend. Client PCs never connect to PostgreSQL; they only talk to the backend port (8000 by default).
+- **Other PCs** run the desktop app and connect to the server over the LAN.
+- **Optional office mail server**: CDTRS reads incoming documents from the **DS mailbox** (IMAP) and sends workflow notifications from the **CDTRS mailbox** (SMTP). The two mailboxes are separate accounts with separate passwords.
 
-Incoming mail — IMAP
+What each part of the testing needs:
 
-DS Office Mailbox
-        ↓
-      IMAP
-        ↓
-CDTRS IntranetMailProvider
-        ↓
-CDTRS reads incoming emails
-        ↓
-attachments/body/subject/sender are parsed
+| Test | Office LAN (or VPN) needed | Documents in the database needed |
+|------|:---:|:---:|
+| Configuration check (`test_intranet_mail.py`) | No | No |
+| IMAP connect, login, read DS mailbox | Yes | No |
+| SMTP send of a test email | Yes | No |
+| Mailbox sync from CDTRS, intake, workflow | Yes | No (an empty database is fine; records are created by the test) |
 
-Outgoing mail — SMTP
+If the mail server is only reachable inside the office, the real IMAP/SMTP tests will not work from home unless the organisation provides a VPN that routes to it.
 
-CDTRS
-  ↓
-SMTP
-  ↓
-CDTRS/application mailbox or configured sender
-  ↓
-recipient receives email
+---
 
-The test file checks these independently.
+## 2. Server PC setup for the LAN
 
-2. Do we need LAN?
+### 2.1 Set HOST and PORT
 
-Yes — for the real intranet-mail test
+Open `C:\CDTRS-main\backend\.env` in Notepad and check:
 
-If your intranet mail server is configured as something like:
+```
+HOST=0.0.0.0
+PORT=8000
+```
 
-INTRANET_IMAP_HOST=192.168.1.100
-INTRANET_SMTP_HOST=192.168.1.100
+- `HOST=0.0.0.0` lets other PCs connect. `HOST=127.0.0.1` allows this PC only.
+- If you change `PORT`, use the same number in the firewall rule and in every client's `CDTRS_API_URL`.
 
-then the computer running CDTRS must be able to reach that server.
+If `backend\.env` does not exist yet: `cd /d C:\CDTRS-main\backend` then `copy .env.example .env`, and fill in `DATABASE_URL` and `SECRET_KEY`.
 
-That normally means:
+### 2.2 Start the backend
 
-Your laptop/PC
-     │
-     │ LAN / same office network
-     ↓
-192.168.1.100
-     │
-     ├── IMAP
-     └── SMTP
+Double-click `C:\CDTRS-main\start_backend.bat`. It runs `backend\run_server.py` with HOST and PORT from `backend\.env`.
 
-Therefore:
+- **Keep this window open.** Closing it stops the server for everybody.
+- The backend reads `backend\.env` only when it starts. After any change to `backend\.env`, close the window and start it again.
 
-Test
+### 2.3 Allow the port in Windows Firewall
 
-LAN required?
+Open an **Administrator Command Prompt** (Start, type `cmd`, right-click Command Prompt, Run as administrator) and run:
 
-Check Python/imports
+```
+netsh advfirewall firewall add rule name="CDTRS backend" dir=in action=allow protocol=TCP localport=8000
+```
 
-No
+This only needs to be done once. To confirm the rule exists:
 
-Check .env loading
+```
+netsh advfirewall firewall show rule name="CDTRS backend"
+```
 
-No
+Only the backend port needs to be opened. PostgreSQL (5432) does not need to be reachable from the LAN.
 
-Check configuration values
+### 2.4 Find the server's IP address
 
-No
+On the server PC, in a Command Prompt:
 
-Check provider object creation
+```
+ipconfig
+```
 
-No
+Note the **IPv4 Address** of the network adapter connected to the office LAN, for example `192.168.1.50`. Ask the network administrator to give the server a fixed IP address (or a DHCP reservation); if the address changes, every client stops connecting.
 
-Real IMAP connection
+### 2.5 Check from a client PC
 
-Yes
+1. On the server itself, open a browser at `http://127.0.0.1:8000/health`.
+2. On a client PC, open a browser at `http://192.168.1.50:8000/health` (use your server IP).
 
-Real IMAP login
+Both should show a short JSON reply in which `status` is `healthy`. If step 1 works but step 2 does not, the problem is the firewall or the network, not CDTRS (see section 6). From PowerShell on the client you can also test the port:
 
-Yes
+```
+Test-NetConnection 192.168.1.50 -Port 8000
+```
 
-Read real DS mailbox
+`TcpTestSucceeded : True` means the port is reachable.
 
-Yes
+---
 
-Real SMTP connection
+## 3. Client PC setup
 
-Yes
+Do this on every PC that will run the desktop app.
 
-Send a real intranet email
+1. Install **Python 3.12 (64-bit)** for the current user (default location `%LOCALAPPDATA%\Programs\Python\Python312\`).
+2. Copy the CDTRS project folder to `C:\CDTRS-main` on the client.
+3. Install the pinned packages (the versions are identical to `C:\CDTRS-main\imp.txt`, the list of installed packages; do not upgrade or add others):
 
-Yes
+   ```
+   cd /d C:\CDTRS-main
+   python -m pip install -r frontend\requirements.txt
+   ```
 
-Test CDTRS + real intranet mail end-to-end
+   This is the same pinned set as on the server, so the download is large. If `python` is not recognised, use `py -3.12` instead of `python`, or the full path `"%LOCALAPPDATA%\Programs\Python\Python312\python.exe"`.
+4. Create the client settings file:
 
-Yes
+   ```
+   cd /d C:\CDTRS-main\frontend
+   copy .env.example .env
+   ```
 
-If you are testing tomorrow from home and the mail server is only reachable on the office LAN, the real IMAP/SMTP connection will not work unless you have an approved route such as the organization's VPN.
+5. Edit `frontend\.env` and set the server address (keep the value alone on the line, with no comment after it):
 
-Do not assume that 192.168.1.100 will be reachable from outside the office LAN.
+   ```
+   CDTRS_API_URL=http://192.168.1.50:8000/api/v1
+   ```
 
-3. Does the database need documents?
+   `CDTRS_API_TIMEOUT` (seconds, default 15.0) can be raised on a slow network.
+6. Double-click `C:\CDTRS-main\start_frontend.bat` and log in.
 
-No — not for the standalone intranet mail test
+Note: the desktop app reads `frontend\.env`. Only if that file does not exist does it try a `.env` in the current folder (`C:\CDTRS-main` when started with `start_frontend.bat`). If an old `C:\CDTRS-main\.env` from earlier versions is still there, move its settings into `backend\.env` / `frontend\.env` and delete or rename it (for example to `.env.old`) to avoid confusion.
 
-This is important.
+The server PC can run the desktop app too, with `CDTRS_API_URL=http://127.0.0.1:8000/api/v1`.
 
-The test file:
+---
 
-backend\tests\test_intranet_mail.py
+## 4. Mail over the intranet: settings
 
-is designed to test the mail provider directly.
+### 4.1 Variables in backend\.env
 
-It does not need CDTRS documents in PostgreSQL.
+The template is section 6 "MAIL" of `backend\.env.example`. Everything there is commented out with `#`:
 
-It also does not need to insert documents into the CDTRS database just to test:
+1. Remove the `#` in front of the `# MAIL_CHANNEL=intranet` line. It is a separate line at the top of section 6, above the Mode A (Outlook) and Mode B (intranet) blocks.
+2. In the "Mode B" block (and, if wanted, the "Testing" block), remove the `#` only in front of the `KEY=value` lines. Lines that are only explanations (for example `# Incoming: the DS mailbox that receives documents`) stay commented. Leave the Mode A (Outlook) lines commented.
+3. Fill in your values. The result should look like this:
 
-IMAP connection
-
-IMAP login
-
-reading the DS inbox
-
-parsing emails
-
-parsing attachments
-
-SMTP connection
-
-sending a test email
-
-So even if your database contains:
-
-0 documents
-0 branches
-0 work items
-
-the standalone mail test can still work.
-
-Why?
-
-Because the test path is essentially:
-
-.env
- ↓
-IntranetMailProvider
- ↓
-IMAP/SMTP server
-
-not:
-
-PostgreSQL documents
- ↓
-workflow
- ↓
-mail
-
-4. Important distinction: standalone test vs full CDTRS test
-
-There are two levels of testing.
-
-Level 1 — Mail provider test
-
-Run:
-
-python backend\tests\test_intranet_mail.py
-
-This tests the mail server integration itself.
-
-Database documents are not required.
-
-Level 2 — Full CDTRS workflow test
-
-This tests things such as:
-
-Incoming email
-    ↓
-CDTRS sync
-    ↓
-IncomingMessage
-    ↓
-Document/intake workflow
-    ↓
-DS
-    ↓
-Director
-    ↓
-HOD / Employee / TSO
-    ↓
-notifications/emails
-
-For this level, the database and CDTRS application matter.
-
-If you want to test document-specific workflow behavior, you will eventually need suitable database records/documents.
-
-So:
-
-Empty DB is completely fine for tomorrow's standalone intranet mail connectivity test.
-
-5. Before starting tomorrow
-
-Make sure you have:
-
-CDTRS project
-
-Python environment activated
-
-root .env
-
-latest backend/mail/intranet_provider.py
-
-latest backend/mail/service.py
-
-backend/tests/test_intranet_mail.py
-
-access to the intranet mail server
-
-DS mailbox username/password for IMAP
-
-CDTRS/application mailbox username/password for SMTP
-
-SMTP recipient address for the optional send test
-
-6. Verify the test file is in the correct place
-
-The file must be:
-
-C:\Projects\CDTRS-main\backend\tests\test_intranet_mail.py
-
-The .env must be:
-
-C:\Projects\CDTRS-main\.env
-
-Very important
-
-The test file should load:
-
-ROOT_DIR = Path(__file__).resolve().parents[2]
-env_path = ROOT_DIR / ".env"
-
-because .env is in the project root, not inside backend.
-
-7. Open PowerShell
-
-Go to the project root:
-
-cd C:\Projects\CDTRS-main
-
-Check that you are in the correct directory:
-
-pwd
-
-You should see something similar to:
-
-Path
-----
-C:\Projects\CDTRS-main
-
-8. Activate your Python environment
-
-Use the same environment you normally use for CDTRS.
-
-For example, if you use a conda environment:
-
-conda activate <your-environment>
-
-Or if you use a virtual environment:
-
-.\venv\Scripts\activate
-
-Use whichever environment actually contains your CDTRS dependencies.
-
-9. Check Python
-
-Run:
-
-python --version
-
-Then:
-
-python -c "import sys; print(sys.executable)"
-
-This confirms that the expected Python environment is being used.
-
-10. Check that the required packages are importable
-
-The test itself will expose import problems, but you can optionally check:
-
-python -c "import dotenv; print('python-dotenv OK')"
-
-and:
-
-python -c "import backend.mail.intranet_provider"
-
-If your project uses a different import setup, the second command may differ. The actual test file is the authoritative check.
-
-11. Check the ROOT .env
-
-Open:
-
-C:\Projects\CDTRS-main\.env
-
-For intranet testing, the important section should look like this conceptually:
-
+```
 MAIL_CHANNEL=intranet
 
+# Incoming: DS mailbox (IMAP)
 INTRANET_IMAP_HOST=192.168.1.100
 INTRANET_IMAP_PORT=993
 INTRANET_IMAP_SECURITY=ssl
 INTRANET_IMAP_AUTH=password
+DS_MAIL_USER=ds_office@intranet.gov.in
+DS_MAIL_PASS=<DS mailbox password>
+IMAP_TIMEOUT=20
 
-DS_MAIL_USER=your_ds_mailbox
-DS_MAIL_PASS=your_ds_password
-
+# Outgoing: CDTRS mailbox (SMTP)
 INTRANET_SMTP_HOST=192.168.1.100
 INTRANET_SMTP_PORT=587
 INTRANET_SMTP_SECURITY=starttls
 INTRANET_SMTP_AUTH=password
-
-CDTRS_MAIL_USER=your_cdtrs_mailbox
-CDTRS_MAIL_PASS=your_cdtrs_password
-CDTRS_SENDER_EMAIL=your_sender_address
+CDTRS_MAIL_USER=cdtrs@intranet.gov.in
+CDTRS_MAIL_PASS=<CDTRS mailbox password>
+CDTRS_SENDER_EMAIL=cdtrs@intranet.gov.in
 CDTRS_SENDER_NAME=CDTRS
 
 INTRANET_ALLOW_SELFSIGNED=true
+
+# Testing
 OVERRIDE_TEST_RECIPIENT_EMAIL=
+TEST_MAIL_RECIPIENT=
+```
 
-Use your organization's actual values.
+`INTRANET_ALLOW_SELFSIGNED=true` is what the template shows. Keep it `true` only if the mail server uses a self-signed certificate; set it to `false` if the server's certificate is issued by a trusted authority (see 4.3).
 
-12. Do not mix the old and new variable names
+| Variable | Meaning | Default if missing |
+|----------|---------|--------------------|
+| `MAIL_CHANNEL` | `intranet` = office IMAP/SMTP; `outlook` = Microsoft Graph (see OUTLOOK_INTEGRATION_GUIDE.md); `off` (also `none`, `disabled`) = no mailbox sync and no emails at all | `outlook` |
+| `INTRANET_IMAP_HOST` / `_PORT` | Mail server name or IP, and IMAP port | (empty) / `993` |
+| `INTRANET_IMAP_SECURITY` | `ssl`, `starttls` or `plain` | `ssl` |
+| `INTRANET_IMAP_AUTH` | Only `password` is supported | `password` |
+| `DS_MAIL_USER` / `DS_MAIL_PASS` | Login of the **DS mailbox** (incoming) | (empty) |
+| `IMAP_TIMEOUT` | Seconds to wait for the IMAP server | `20` |
+| `INTRANET_SMTP_HOST` / `_PORT` | Mail server name or IP, and SMTP port | (empty) / `587` |
+| `INTRANET_SMTP_SECURITY` | `ssl`, `starttls` or `plain` | `starttls` |
+| `INTRANET_SMTP_AUTH` | Only `password` is supported | `password` |
+| `CDTRS_MAIL_USER` / `CDTRS_MAIL_PASS` | Login of the **CDTRS mailbox** (outgoing) | (empty) |
+| `CDTRS_SENDER_EMAIL` | "From" address of CDTRS emails | value of `CDTRS_MAIL_USER` |
+| `CDTRS_SENDER_NAME` | "From" display name | `CDTRS` |
+| `INTRANET_ALLOW_SELFSIGNED` | `true` = accept a self-signed server certificate | `false` |
+| `OVERRIDE_TEST_RECIPIENT_EMAIL` | Send every workflow notification to this one address | (empty = off) |
+| `TEST_MAIL_RECIPIENT` | Default recipient for `tests\test_intranet_mail.py --send` (not used by CDTRS itself) | (empty) |
 
-The newer intranet_provider.py uses separate credentials:
+Notes:
 
-Incoming / DS mailbox
+- CDTRS treats the mail integration as configured only when the IMAP host, DS user, SMTP host, CDTRS user and sender address are all set. Do not leave `CDTRS_SENDER_EMAIL=` empty: an empty line is not the same as a missing line, and the sender would then be blank. Fill it in or delete the line.
+- Do not mix up the two accounts: IMAP logs in with `DS_MAIL_*`, SMTP logs in with `CDTRS_MAIL_*`.
+- Workflow notification emails always go out through the office-wide `MAIL_CHANNEL`. With `MAIL_CHANNEL=intranet`, each account's main **email** field is used as the address (if it is empty: the government email, then the Outlook email). Make sure the user accounts have their office email address filled in.
+- Keep real passwords only in `backend\.env`. It is git-ignored; never paste it into chat, email or screenshots.
 
-DS_MAIL_USER=
-DS_MAIL_PASS=
+### 4.2 Security modes
 
-Outgoing / CDTRS application mailbox
+The value must match what the mail server offers. Ask the mail administrator; do not guess.
 
-CDTRS_MAIL_USER=
-CDTRS_MAIL_PASS=
-CDTRS_SENDER_EMAIL=
-CDTRS_SENDER_NAME=
+| Value | What happens | Usual port |
+|-------|--------------|-----------|
+| `ssl` | Encrypted from the first byte (implicit TLS) | IMAP 993, SMTP 465 |
+| `starttls` | Plain connection upgraded with STARTTLS | IMAP 143, SMTP 587 |
+| `plain` | No encryption (only on a trusted internal network) | IMAP 143, SMTP 25 |
 
-Older versions used variables such as:
+The spellings `tls` (= `starttls`), `ssl/tls` (= `ssl`) and `none` (= `plain`) are also accepted.
 
-INTRANET_MAIL_USER
-INTRANET_MAIL_PASS
-INTRANET_SENDER_EMAIL
+### 4.3 Self-signed certificates
 
-Do not assume the old variable names work with the new provider.
+Internal mail servers often use a self-signed certificate. CDTRS then refuses the `ssl`/`starttls` connection with a certificate verification error. Set:
 
-Use the variables expected by the actual installed intranet_provider.py.
+```
+INTRANET_ALLOW_SELFSIGNED=true
+```
 
-13. Do not put real passwords in this guide
+This switches off certificate and host-name checking for the mail connection. Use it only for a mail server on the office network that you trust.
 
-Keep real credentials only in your local .env.
+### 4.4 Safe testing with OVERRIDE_TEST_RECIPIENT_EMAIL
 
-Do not paste the real passwords into chat, GitHub, screenshots, or source code.
+While testing, set:
 
-Also make sure .env is in .gitignore.
+```
+OVERRIDE_TEST_RECIPIENT_EMAIL=your.test.address@intranet.gov.in
+```
 
-14. First run — configuration test
+Every workflow notification email is then sent to this one address instead of to the real users. Leave it empty (or `none` / `false` / `off`) for normal operation, and restart the backend after changing it. It does not affect the `--send` test in section 5.7, which always uses the recipient you give it.
 
-From:
+---
 
-C:\Projects\CDTRS-main
+## 5. Testing mail step by step
 
-run:
+Test one layer at a time: first the mail server connection, then CDTRS mailbox sync, then the workflow. Keep the number of test emails small: one simple email, one email with an attachment, one outgoing test.
 
-python backend\tests\test_intranet_mail.py
+### 5.1 Before you start
 
-Do this before trying to send anything.
+You need:
 
-The first run should verify the local configuration and provider setup.
+- `backend\.env` filled in as in section 4.1 (both the IMAP and the SMTP part; the test stops if any required value is missing).
+- A PC on the office LAN (or VPN) that can reach the mail server.
+- Another mail account to send test emails to the DS mailbox, and a mail client (or webmail) where you can see the DS mailbox and mark messages as unread.
+- A test recipient address for the SMTP test.
 
-15. What you should inspect in the output
+For sections 5.2 to 5.7, **stop the CDTRS backend**, or run it with mail switched off (`start_backend.bat --no-mail`, or `MAIL_CHANNEL=off` in `backend\.env`). A running backend with `MAIL_CHANNEL=intranet` checks the DS mailbox every 30 seconds and would pick up your test emails first.
 
-The test should show configuration-related information while masking passwords.
+**Warning for second or test backends.** Every backend that runs with `MAIL_CHANNEL=intranet` syncs the real DS mailbox into **its own** database and marks those emails as read, so the live server never sees them. A second backend for tests (for example on port 8123) must always be started with mail switched off:
 
-You want to confirm:
+```
+cd /d C:\CDTRS-main\backend
+python run_server.py --port 8123 --host 127.0.0.1 --no-mail
+```
 
-.env found
-IMAP host present
-IMAP port present
-IMAP security present
-DS username present
-DS password present
-SMTP host present
-SMTP port present
-SMTP security present
-CDTRS username present
-CDTRS password present
-sender present
+### 5.2 Check that the mail server is reachable
 
-Passwords should not be printed in plain text.
+In PowerShell (use your mail server address and ports):
 
-16. Next test — IMAP connectivity
-
-The test then attempts to connect to:
-
-INTRANET_IMAP_HOST
-INTRANET_IMAP_PORT
-
-For example:
-
-192.168.1.100:993
-
-This is the first step that requires the real mail server/network.
-
-If it succeeds
-
-You should get a successful connection/login result.
-
-Then the test checks the mailbox/INBOX.
-
-17. If IMAP connection fails
-
-Do not immediately change Python code.
-
-First check:
-
-A. Are you on the correct LAN?
-
-Check your network connection.
-
-B. Can the machine reach the mail server?
-
-You can test the host:
-
-Test-Connection 192.168.1.100 -Count 2
-
-If ICMP is blocked, this can fail even though the mail port works, so this is only a basic network check.
-
-C. Test the port
-
-For IMAP SSL:
-
+```
 Test-NetConnection 192.168.1.100 -Port 993
-
-For SMTP STARTTLS:
-
 Test-NetConnection 192.168.1.100 -Port 587
+```
 
-Look for:
+`TcpTestSucceeded : True` is needed for both. If it is `False`, fix the network, VPN or firewall first; changing CDTRS settings will not help.
 
-TcpTestSucceeded : True
+### 5.3 Run the connection test (configuration + IMAP)
 
-If it says False, the problem is likely network/firewall/server accessibility rather than CDTRS workflow code.
+```
+cd /d C:\CDTRS-main\backend
+python tests\test_intranet_mail.py
+```
 
-18. Check IMAP credentials
+The script loads `backend\.env` (the first line says which file it loaded) and does not touch the CDTRS database. It then:
 
-If the port is reachable but login fails, check:
+1. Prints the configuration, with passwords masked.
+2. **Configuration check**: the seven required values (`INTRANET_IMAP_HOST`, `DS_MAIL_USER`, `DS_MAIL_PASS`, `INTRANET_SMTP_HOST`, `CDTRS_MAIL_USER`, `CDTRS_MAIL_PASS`, `CDTRS_SENDER_EMAIL`), the two security values (`ssl`/`starttls`/`plain`) and the two auth values (`password`). If anything fails here, the script stops.
+3. **IMAP test**: connects, logs in to the DS mailbox, opens INBOX, and fetches up to 10 **unread** messages. For each one it shows Message ID, sender, subject, received time, the attachments (name, size, type) and the start of the body.
+4. Prints a final result. No email is sent without `--send`.
 
-DS_MAIL_USER=
-DS_MAIL_PASS=
+"No unread emails were returned" is not an error; it only means the DS mailbox has no unread mail.
 
-Make sure they are the credentials for the DS mailbox, not the CDTRS sending mailbox.
+### 5.4 Read a simple test email
 
-19. IMAP security must match the server
+1. From another account, send an email to the DS mailbox, subject `CDTRS Intranet Test`, with one line of body text.
+2. Do not open it (it must stay unread).
+3. Run `python tests\test_intranet_mail.py` again.
+4. Check that the sender, subject, time and body text are shown correctly.
 
-For example:
+### 5.5 Read an email with an attachment
 
-INTRANET_IMAP_SECURITY=ssl
+1. Send another email to the DS mailbox, subject `CDTRS Attachment Test`, with a small harmless file attached (for example a one-page PDF).
+2. Run the test again.
+3. Check that the message shows `Attachments: 1` with the correct file name and a plausible size.
 
-means direct SSL/TLS IMAP.
+### 5.6 Read/unread behaviour
 
-If your server instead requires STARTTLS or plain IMAP, the value must match the server configuration.
+- CDTRS and the test script only look at **unread** messages.
+- Reading a message this way marks it as **read** on the mail server. So after one test run the same email will not appear again. The "Unread messages currently available" count is taken after the messages have been fetched, so it can show 0 even though messages were just listed.
+- An email opened in a mail client, or already picked up by a running backend (including a second or test backend that was not started with `--no-mail`), is also read.
+- To repeat a test, mark the email as unread again in the mail client.
 
-Do not randomly switch this value.
+### 5.7 Send a test email over SMTP
 
-Use the organization's mail-server configuration.
+```
+python tests\test_intranet_mail.py --send --recipient your.test.address@intranet.gov.in
+```
 
-20. Test reading incoming emails
+The script shows the SMTP server, security mode, sender and recipient, and asks you to type `SEND` (in capitals). Anything else cancels without sending. The email has the subject `[CDTRS] Intranet Mail Integration Test`.
 
-Once IMAP login succeeds, the test can retrieve unread messages.
+In the received email check that:
 
-The flow is:
+- the sender is `CDTRS_SENDER_NAME <CDTRS_SENDER_EMAIL>`;
+- the subject and the short test text are correct;
+- it did not land in the spam or junk folder.
 
-DS mailbox
-    ↓
-INBOX
-    ↓
-unread messages
-    ↓
-IntranetMailProvider
-    ↓
-IncomingEmailDTO
+Command-line options of `tests\test_intranet_mail.py`:
 
-The test should inspect things such as:
+| Option | Effect |
+|--------|--------|
+| (none) | Configuration check + IMAP test. No email is sent. |
+| `--send` | Also sends one real test email (after you type `SEND`). |
+| `--recipient <address>` | Recipient for `--send`. Can instead be set as `TEST_MAIL_RECIPIENT=` in `backend\.env` (listed, commented out, in the "Testing" part of `backend\.env.example`). |
+| `--all` | Same as `--send`, using `--recipient` or `TEST_MAIL_RECIPIENT`. |
+| `--incoming-only` | IMAP test only; SMTP is skipped even if `--send` or `--all` is also given. |
 
-subject
+The IMAP test always runs. The script exits with code 0 when all requested tests pass and 1 otherwise.
 
-sender
+### 5.8 Check that CDTRS selects the intranet provider
 
-date/time
+With `MAIL_CHANNEL=intranet` in `backend\.env`:
 
-body
+```
+cd /d C:\CDTRS-main\backend
+python tests\test_mail_service.py
+```
 
-attachment flag
+In block `[5] Testing get_provider() with no argument` the class must be `IntranetMailProvider`. If it shows `OutlookGraphProvider`, `MAIL_CHANNEL` is missing or misspelled. The later blocks about Outlook can be ignored for intranet mail. This script does not contact the mail server.
 
-attachments
+### 5.9 Mailbox sync from CDTRS
 
-21. You do not need CDTRS documents for this
+1. Make sure PostgreSQL is running and `DATABASE_URL` in `backend\.env` points to the right database. An empty database (no documents) is fine.
+2. Send a fresh test email (with an attachment) to the DS mailbox and leave it unread.
+3. Start the backend with `start_backend.bat` and check that it starts without database errors.
+4. Log in to the desktop app with the DS account (seeded username `exec_user`) in the DS context.
+5. Open **Inbox** ("Incoming Communications") and click **Sync Now**.
+6. A dialog shows the result, including `New communications: 1`. The message appears in the list.
 
-This point is worth repeating.
+Also note:
 
-Suppose PostgreSQL contains:
+- The backend also syncs automatically every 30 seconds while it runs, so the email may already be in the list before you click Sync Now.
+- The Sync Now button calls `POST /api/v1/intake/sync-outlook`. Despite "outlook" in the name (and in some dialog titles), it uses whatever `MAIL_CHANNEL` selects.
+- "not configured" in the dialog means `MAIL_CHANNEL` or one of the required mail values is missing, mail is switched off (`MAIL_CHANNEL=off` or `--no-mail`), or the backend was not restarted after editing `backend\.env`.
 
-Documents = 0
+To check the database directly (adjust `18` to your PostgreSQL version; psql asks for the postgres password):
 
-The IMAP test can still retrieve:
+```
+"C:\Program Files\PostgreSQL\18\bin\psql.exe" -h localhost -U postgres -d cdtrs -c "SELECT id, subject, sender_email, has_attachments, received_at FROM incoming_messages ORDER BY id DESC LIMIT 5;"
+```
 
-Email 1
-Email 2
-Email 3
+### 5.10 Duplicate handling
 
-because those messages exist in the mailbox, not in the CDTRS document table.
-
-The test is checking the mail integration before CDTRS creates/uses document records.
-
-22. Best first incoming-mail test
-
-Before testing complicated attachments, have a simple test email in the DS mailbox:
-
-From: test sender
-Subject: CDTRS Intranet Test
-Body:
-This is a test email for CDTRS intranet mail integration.
-
-Then run:
-
-python backend\tests\test_intranet_mail.py
-
-Confirm that the message is detected and parsed.
-
-23. Test an email with an attachment
-
-Send another test message to the DS mailbox:
-
-Subject: CDTRS Attachment Test
-
-Attach something harmless, for example:
-
-test.pdf
-
-or:
-
-test.txt
-
-Run the test again.
-
-Confirm that the parsed email reports an attachment and that its metadata is available.
-
-24. Important: unread/read behavior
-
-The provider is designed around unread-message synchronization.
-
-Therefore, if a message has already been marked/read, it may not appear in an unread-only test.
-
-If you think:
-
-"I sent an email but the test doesn't see it."
-
-first check whether the message is already marked as read.
-
-25. Test outgoing SMTP
-
-The standalone test does not need to send an email automatically.
-
-This is intentional.
-
-Sending is an external side effect.
-
-First make sure:
-
-IMAP works
-configuration works
-SMTP configuration is present
-
-Then explicitly run the send test.
-
-26. Run the optional SMTP test
-
-Use:
-
-python backend\tests\test_intranet_mail.py --send --recipient your-test-email@example.com
-
-The test should ask for confirmation before actually sending.
-
-Only confirm if you are ready to send a real test email.
-
-27. What to check in the received email
-
-Check:
-
-Sender
-
-It should correspond to:
-
-CDTRS_SENDER_EMAIL=
-
-Recipient
-
-It should be the test recipient.
-
-Subject
-
-It should identify the test.
-
-Body
-
-It should contain the test message.
-
-Mail server
-
-It should have been sent through:
-
-INTRANET_SMTP_HOST
-INTRANET_SMTP_PORT
-
-28. SMTP security troubleshooting
-
-For example, if you have:
-
-INTRANET_SMTP_PORT=587
-INTRANET_SMTP_SECURITY=starttls
-
-the server must support the corresponding STARTTLS flow.
-
-If the organization uses SSL directly, the configuration will be different.
-
-Again, use the actual mail-server configuration rather than changing values randomly.
-
-29. Test the CDTRS MailService layer
-
-After the direct provider test works, test the service layer.
-
-The architecture is:
-
-CDTRS
-  ↓
-MailService
-  ↓
-selected channel
-  ↓
-IntranetMailProvider
-  ↓
-IMAP / SMTP
-
-The important setting is:
-
-MAIL_CHANNEL=intranet
-
-This tells CDTRS to use the intranet provider instead of Outlook.
-
-30. Important background-sync correction
-
-The background mailbox synchronization should use:
-
-mail_service.is_configured()
-
-rather than forcing:
-
-mail_service.is_configured("outlook")
-
-because the selected provider comes from:
-
-MAIL_CHANNEL
-
-This matters when switching from Outlook to intranet mode.
-
-31. Test manual CDTRS mailbox synchronization
-
-Once the direct mail-provider test works, run CDTRS/backend and test the mailbox-sync endpoint/function.
-
-At this stage the flow becomes:
-
-DS mailbox
-    ↓
-IMAP
-    ↓
-MailService
-    ↓
-IntranetMailProvider
-    ↓
-IncomingMessage
-    ↓
-CDTRS database
-
-Now the database becomes relevant.
-
-32. What happens if the database starts empty?
-
-That is okay.
-
-An empty database means CDTRS has no previously registered documents.
-
-When synchronization receives a new email, CDTRS can create/persist its incoming-message/intake data according to the current implementation.
-
-So you can start with:
-
-Documents: 0
-Incoming messages: 0
-
-and test the synchronization flow.
-
-However, the exact database records created depend on the current MailService.sync_ds_mailbox() implementation.
-
-33. Database test sequence
-
-For the full integration test, use this order:
-
-Step 1
-
-Start PostgreSQL.
-
-Step 2
-
-Make sure:
-
-DATABASE_URL=...
-
-points to your CDTRS database.
-
-Step 3
-
-Start the CDTRS backend.
-
-Step 4
-
-Ensure the backend starts without database errors.
-
-Step 5
-
-Send a fresh test email to the DS mailbox.
-
-Step 6
-
-Trigger mailbox synchronization.
-
-Step 7
-
-Check the backend response/log.
-
-Step 8
-
-Check the database for the newly persisted incoming-message/intake record.
-
-34. Test duplicate handling
-
-This is important because your mail synchronization already has duplicate protection.
-
-Suppose you sync:
-
-CDTRS Intranet Test #1
-
-The first sync should create the new record.
-
-If you run synchronization again without a new message, the same email should not be inserted repeatedly.
-
-The expected behavior is similar to:
-
-synced_count = 0
-ignored_duplicates = 1
-
-for an already-known message, depending on the exact mailbox contents.
-
-35. Then test attachment persistence
-
-Send:
-
-Subject: CDTRS Attachment Integration Test
-
-with:
-
-sample.pdf
-
-Run synchronization.
-
-Then verify:
-
-IncomingMessage
-      ↓
-Attachment
-      ↓
-stored file
-
-The current service stores incoming attachments under the configured upload directory.
-
-For example:
-
-UPLOAD_DIR=./uploads
-
-36. Then test the full workflow
-
-Only after mail synchronization itself works should you test:
-
-Email
- ↓
-Incoming message
- ↓
-Document/intake
- ↓
-DS
- ↓
-Director review
- ↓
-HOD / Employee / TSO
- ↓
-notifications
-
-This is a different test from the standalone mail-provider test.
-
-37. Director/OCR testing is separate
-
-Do not mix the following tests together initially:
-
-mail connectivity
-
-OCR
-
-department semantic routing
-
-Director handwriting detection
-
-workflow gate
-
-database
-
-UI
-
-First prove the mail layer.
-
-Then prove the CDTRS intake layer.
-
-Then prove OCR.
-
-Then prove workflow.
-
-This makes failures much easier to identify.
-
-38. Recommended complete testing order for tomorrow
-
-Use this exact sequence:
-
-1. Connect to office LAN
-        ↓
-2. Open C:\Projects\CDTRS-main
-        ↓
-3. Activate CDTRS Python environment
-        ↓
-4. Verify root .env
-        ↓
-5. Verify intranet credentials/config
-        ↓
-6. Run test_intranet_mail.py
-        ↓
-7. Verify configuration checks
-        ↓
-8. Verify IMAP connection
-        ↓
-9. Verify IMAP login
-        ↓
-10. Verify INBOX access
-        ↓
-11. Read a simple test email
-        ↓
-12. Read a test email with attachment
-        ↓
-13. Test SMTP connection/send
-        ↓
-14. Verify received test email
-        ↓
-15. Set MAIL_CHANNEL=intranet
-        ↓
-16. Start PostgreSQL
-        ↓
-17. Start CDTRS backend
-        ↓
-18. Run CDTRS mailbox synchronization
-        ↓
-19. Verify IncomingMessage/database persistence
-        ↓
-20. Test duplicate handling
-        ↓
-21. Test incoming attachment persistence
-        ↓
-22. Test DS intake/UI
-        ↓
-23. Test workflow routing
-        ↓
-24. Test notifications
-        ↓
-25. Test Director/OCR behavior separately
-
-39. What absolutely does NOT require the LAN
-
-You can do these before going to the office:
-
-✓ Check file structure
-✓ Check test file
-✓ Check root .env loading
-✓ Check imports
-✓ Check provider construction
-✓ Check configuration validation
-✓ Check that passwords are masked
-✓ Check CDTRS Python environment
-✓ Check database configuration
-✓ Run tests that do not contact the mail server
-
-40. What DOES require the LAN
-
-For your current intranet configuration:
-
-✓ IMAP server connection
-✓ DS mailbox login
-✓ Reading real emails
-✓ Reading real attachments
-✓ SMTP server connection
-✓ Sending real email
-✓ Full intranet mail integration
-
-If the organization provides VPN access that routes to the mail server, that may substitute for being physically on the LAN, subject to the organization's network configuration.
-
-41. What does NOT require documents in the database
-
-The standalone test works with:
-
-Documents = 0
-
-because it tests the mail provider.
-
-You can therefore test the mail server first without creating dummy CDTRS documents.
-
-42. What eventually requires the database
-
-The database matters when testing:
-
-MailService.sync_ds_mailbox()
-IncomingMessage persistence
-Attachment persistence
-Document creation/intake
-DS dashboard
-Routing
-Director review
-HOD assignment
-Employee work
-TSO work
-Notifications
-Workflow history
-
-43. If something fails, identify the layer first
-
-Use this table.
-
-Failure
-
-First thing to check
-
-.env not found
-
-Root .env path
-
-Import error
-
-Python environment / project path
-
-IMAP host unreachable
-
-LAN/VPN/firewall
-
-IMAP port closed
-
-Mail server/network
-
-IMAP authentication failed
-
-DS_MAIL_USER/PASS
-
-SSL error
-
-IMAP security/certificate settings
-
-No emails found
-
-Inbox/unread status
-
-Attachment missing
-
-MIME/message parsing
-
-SMTP connection failed
-
-SMTP host/port/network
-
-SMTP authentication failed
-
-CDTRS_MAIL_USER/PASS
-
-SMTP TLS error
-
-SMTP security mode
-
-Email sent but not received
-
-recipient/mail server/filter
-
-CDTRS sync fails
-
-MailService/DB/config
-
-DB insert fails
-
-PostgreSQL/schema/migration
-
-Duplicate appears
-
-sync/deduplication logic
-
-UI doesn't show intake
-
-frontend/API issue
-
-Workflow routing fails
-
-workflow/backend logic
-
-44. Very important safety rule for tomorrow
-
-Do not start by sending a large number of real emails.
-
-Use:
-
-1 simple incoming email
-1 incoming email with attachment
-1 outgoing SMTP test
-
-Confirm each stage before moving to the next.
-
-This avoids filling the real mailbox or database with unnecessary test records.
-
-45. Final checklist
-
-Before leaving the test session, record:
-
-[ ] Root .env loaded
-[ ] MAIL_CHANNEL=intranet
-[ ] IMAP host reachable
-[ ] IMAP port reachable
-[ ] DS mailbox login successful
-[ ] INBOX accessible
-[ ] Simple email parsed
-[ ] Attachment email parsed
-[ ] SMTP host reachable
-[ ] SMTP authentication successful
-[ ] Test email received
-[ ] PostgreSQL running
-[ ] CDTRS backend running
-[ ] Mail synchronization successful
-[ ] IncomingMessage persisted
-[ ] Attachment persisted
-[ ] Duplicate protection verified
-[ ] DS UI receives the intake
-[ ] Workflow test completed
-
-46. The two answers to remember
-
-Do we need LAN?
-
-For the real intranet mail server: yes, unless you have an approved VPN/network route that can reach the intranet mail server.
-
-Does the database need documents?
-
-No, not for test_intranet_mail.py.
-
-You can start with an empty CDTRS database and test the standalone IMAP/SMTP integration.
-
-For the full CDTRS workflow, the database becomes part of the test once you move from direct mail-provider testing to mailbox synchronization, document intake, routing, and workflow.
-
-Recommended starting point tomorrow
-
-Start with exactly:
-
-cd C:\Projects\CDTRS-main
-
-then activate your CDTRS environment and run:
-
-python backend\tests\test_intranet_mail.py
-
-Do not start by running the full CDTRS workflow.
-
-First make the direct intranet mail test pass. Then move one layer at a time.
+CDTRS remembers each synced email by its Message-ID and never stores the same email twice.
+
+1. After the sync in 5.9, mark the same email as **unread** again in the mail client.
+2. Click **Sync Now** again.
+3. The result should report 0 new emails and `(1 duplicate(s) skipped)`. No second record appears in the Inbox or in `incoming_messages`.
+
+(The separate checksum check that rejects the same file uploaded twice, with HTTP 409, applies to manual upload and to adding attachments, not to mailbox sync.)
+
+### 5.11 Attachment storage
+
+Attachments of synced emails are saved under the upload folder (`UPLOAD_DIR`, relative to `backend\`):
+
+```
+C:\CDTRS-main\backend\uploads\<year>\intake_<message id>\<file name>
+```
+
+Two attachments with the same name are stored as `name.pdf`, `name_1.pdf`, and so on; nothing is overwritten. Each attachment is recorded with its size and a SHA-256 checksum:
+
+```
+"C:\Program Files\PostgreSQL\18\bin\psql.exe" -h localhost -U postgres -d cdtrs -c "SELECT id, file_name, storage_key, file_size, source_message_id FROM attachments WHERE source_message_id IS NOT NULL ORDER BY id DESC LIMIT 5;"
+```
+
+Check that the file exists at `backend\uploads\<storage_key>` and opens correctly. In the desktop app, an attachment of a synced email that is not yet registered as a document can only be opened in the DS or Admin context; other users get "Only the DS can open unregistered intake attachments." (HTTP 403).
+
+### 5.12 Full workflow
+
+Only when 5.9 to 5.11 work, test the workflow with the synced email:
+
+1. DS opens the message from the Inbox (it opens in **Document Intake**), completes the details and sends it on for Director review. The document is created and OCR runs on it in the background. A message can be registered only once: processing it again is refused with "This message was already registered as document ..." (HTTP 409).
+2. Director reviews and returns it to DS; DS routes it to the department(s).
+3. HOD assigns work; employee submits progress; HOD reviews; DS closes the document.
+4. At each step check the in-app notifications, and (with `OVERRIDE_TEST_RECIPIENT_EMAIL` set) the notification emails at the test address.
+
+Notification emails are sent over intranet SMTP to each account's main **email** field (see 4.1), or to `OVERRIDE_TEST_RECIPIENT_EMAIL` while that is set. They are only sent while the system setting `mail.notifications_enabled` is `true` (the default).
+
+Test OCR, department suggestions and Director handwriting detection separately from mail; mixing them makes failures hard to trace.
+
+---
+
+## 6. Troubleshooting
+
+| Symptom | Likely cause | What to do |
+|---------|--------------|------------|
+| Client browser cannot open `http://<server-ip>:8000/health` (times out) | Firewall rule missing, or client on a different network | Add the rule (2.3) in an Administrator Command Prompt; check `Test-NetConnection <server-ip> -Port 8000` |
+| "Connection refused" from a client | Backend not running, `HOST=127.0.0.1`, or a different `PORT` | Start `start_backend.bat`; set `HOST=0.0.0.0`; use the same port everywhere |
+| Works on the server (`127.0.0.1`) but not from clients | Wrong IP, or firewall | Run `ipconfig` on the server again; the IP may have changed (ask for a fixed IP) |
+| Desktop app still connects to `127.0.0.1` | `frontend\.env` missing or `CDTRS_API_URL` not set in it | Create or fix `frontend\.env` (section 3); remove any old root `.env` |
+| All clients suddenly lose the connection | Backend window was closed, or the server PC restarted/slept | Start `start_backend.bat` again and keep the window open |
+| Backend window closes or shows database errors at start | PostgreSQL stopped, or wrong `DATABASE_URL` | Start the PostgreSQL service; check the password in `DATABASE_URL` |
+| Test prints `[WARN] backend\.env was not found` | File missing or saved as `.env.txt` | Run `dir /a C:\CDTRS-main\backend\.env*`; rename to exactly `.env` |
+| Configuration check shows `MISSING` | Value empty, still commented out with `#`, or written in an old root `.env` | Fill it in `backend\.env` |
+| IMAP or SMTP "connection" fails, `Test-NetConnection` is `False` | Mail server unreachable (LAN, VPN, firewall) | Fix the network first |
+| Connection fails although the port is open; errors about SSL, TLS or "wrong version number" | Security mode does not match the port (for example `ssl` on a STARTTLS port) | Use the mode and port the mail administrator gives you (4.2) |
+| Error mentioning "certificate verify failed" | Self-signed or internal certificate | `INTRANET_ALLOW_SELFSIGNED=true` (4.3) |
+| IMAP login fails | Wrong `DS_MAIL_USER` / `DS_MAIL_PASS`, or the CDTRS account used by mistake | Check the DS credentials; some servers require the full email address as user name |
+| SMTP send fails at login or the sender is refused | Wrong `CDTRS_MAIL_*`, or the server does not allow that sender address | Check the CDTRS credentials; use a `CDTRS_SENDER_EMAIL` the CDTRS account may send as |
+| Test finds no unread emails | Message already read (earlier test run, mail client, or the running backend) | Mark it unread again (5.6) |
+| Emails become read but never appear in the live CDTRS Inbox | Another backend (test server, second PC) with mail switched on synced them into its own database | Start every test backend with `--no-mail` (5.1); mark the emails unread again |
+| Test email sent but not received | Spam/junk filter, recipient typo, server relay rules | Check junk folder and the mail server log |
+| Sync Now says "not configured" | `MAIL_CHANNEL` not `intranet` (or `off` / started with `--no-mail`), a required value missing, or no restart | Fix `backend\.env` and restart the backend without `--no-mail` |
+| Sync Now says "Mailbox sync is a DS action." | Logged in without the DS context | Log in as the DS user and select the DS context |
+| No notification emails although SMTP works | Account has no email address, `MAIL_CHANNEL` not `intranet`, or `mail.notifications_enabled` off | Fill in the users' email field; check `backend\.env` and restart (see 4.1, 5.12) |
+| Processing an intake message gives "already registered as document" (409) | That email was already turned into a document | Open the existing document instead |
+| Opening a synced attachment gives 403 | Not in the DS or Admin context | Switch to the DS context |
+| `python` is not recognised | Python 3.12 not on PATH | Use `py -3.12` or the full path to `python.exe` |
+
+When something fails, first find the layer: network, mail server login, CDTRS configuration, database, or desktop app. Do not change Python code to work around a network or password problem.
+
+---
+
+## 7. Final checklist
+
+LAN:
+
+- [ ] `backend\.env`: `HOST=0.0.0.0`, `PORT=8000`
+- [ ] Firewall rule "CDTRS backend" added (Administrator Command Prompt)
+- [ ] Server IP noted and fixed
+- [ ] `http://<server-ip>:8000/health` works from a client browser
+- [ ] Each client: Python 3.12, `frontend\requirements.txt` installed, `frontend\.env` with `CDTRS_API_URL` (old root `.env` removed)
+- [ ] Each client can log in with `start_frontend.bat`
+
+Mail:
+
+- [ ] Mail values filled in `backend\.env` (not in a root `.env`), `MAIL_CHANNEL=intranet`
+- [ ] `OVERRIDE_TEST_RECIPIENT_EMAIL` set during testing
+- [ ] Any second or test backend started with `--no-mail`
+- [ ] `test_intranet_mail.py`: configuration PASS, IMAP connection + login + INBOX PASS
+- [ ] Simple email and attachment email read correctly
+- [ ] `--send` test email received with the right sender
+- [ ] `test_mail_service.py` shows `IntranetMailProvider`
+- [ ] Sync Now creates the intake record; attachment saved under `backend\uploads`
+- [ ] Second sync of the same email skips it as a duplicate
+- [ ] User accounts have their office email address filled in
+- [ ] Workflow run completed; notification emails received at the test address
+- [ ] `OVERRIDE_TEST_RECIPIENT_EMAIL` emptied and backend restarted before going live

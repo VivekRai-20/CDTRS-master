@@ -38,6 +38,10 @@ logger = logging.getLogger("cdtrs.mail.service")
 # Otherwise leave it empty/None/false.
 # ==============================================================================
 
+# MAIL_CHANNEL=off (or none / disabled) switches all mail off: no mailbox
+# sync and no notification e-mails (used for test servers).
+MAIL_DISABLED_VALUES = {"off", "none", "disabled"}
+
 _env_override = os.getenv(
     "OVERRIDE_TEST_RECIPIENT_EMAIL",
     ""
@@ -129,8 +133,10 @@ class MailService:
         return self._providers.get(target_channel) or self._providers["outlook"]
 
     def is_configured(self, channel: Optional[str] = None) -> bool:
-        provider = self.get_provider(channel)
-        return provider.is_configured()
+        target = (channel or self.get_default_channel()).lower()
+        if target in MAIL_DISABLED_VALUES:
+            return False
+        return self.get_provider(target).is_configured()
 
     def sync_ds_mailbox(self, db: Session, max_count: int = 50, channel: Optional[str] = None) -> schemas.OutlookSyncResponse:
         """
@@ -145,7 +151,7 @@ class MailService:
         provider = self.get_provider(active_channel)
         channel_label = "Intranet IMAP" if active_channel in ("intranet", "local", "smtp_imap") else "Outlook"
 
-        if not provider.is_configured():
+        if not self.is_configured(active_channel):
             return schemas.OutlookSyncResponse(
                 status="not_configured",
                 synced_count=0,
@@ -202,9 +208,8 @@ class MailService:
 
                 for att in email.attachments:
                     sanitized_name = "".join(c for c in att.filename if c.isalnum() or c in "._- ") or "attachment.pdf"
-                    dest_path = dest_dir / sanitized_name
-                    with open(dest_path, "wb") as fh:
-                        fh.write(att.content_bytes)
+                    # Two attachments with the same name must not overwrite each other.
+                    dest_path = crud.save_file_unique(dest_dir, sanitized_name, att.content_bytes)
 
                     checksum = hashlib.sha256(att.content_bytes).hexdigest()
                     storage_key = str(dest_path.relative_to(self.upload_dir))
@@ -252,22 +257,26 @@ class MailService:
             details=details
         )
 
-    def resolve_user_email(self, user: models.User) -> Optional[str]:
+    def resolve_user_email(self, user: models.User, channel: Optional[str] = None) -> Optional[str]:
         """
-        Resolves the authoritative email address for a user according to preferred channel.
-        If OVERRIDE_TEST_RECIPIENT_EMAIL is configured, routes all test emails to that address.
+        The address to send a notification to over *channel* (default: MAIL_CHANNEL).
+        Outlook uses the user's Outlook address first; the intranet / government
+        mail channels use the main e-mail (or the gov e-mail) first.
+        If OVERRIDE_TEST_RECIPIENT_EMAIL is configured, all e-mails go there instead.
         """
         if OVERRIDE_TEST_RECIPIENT_EMAIL:
             return OVERRIDE_TEST_RECIPIENT_EMAIL
 
         if not user:
             return None
-        pref = (user.preferred_mail_channel or "outlook").lower()
-        if pref == "outlook" and user.outlook_email:
-            return user.outlook_email
-        elif pref == "gov_mail" and user.gov_email:
-            return user.gov_email
-        return user.email or user.outlook_email or user.gov_email
+        active = (channel or self.get_default_channel()).lower()
+        if active == "outlook":
+            order = (user.outlook_email, user.email, user.gov_email)
+        elif active == "gov_mail":
+            order = (user.gov_email, user.email, user.outlook_email)
+        else:
+            order = (user.email, user.gov_email, user.outlook_email)
+        return next((address for address in order if address), None)
 
     def dispatch_workflow_event(
         self,
@@ -352,15 +361,17 @@ class MailService:
         if not user or not doc:
             return False
 
-        recipient_email = self.resolve_user_email(user)
+        # The office-wide MAIL_CHANNEL decides how notifications are sent
+        # (users cannot choose a channel of their own).
+        use_channel = channel or self.get_default_channel()
+        recipient_email = self.resolve_user_email(user, use_channel)
         if not recipient_email:
             logger.warning(f"User {user.username} (ID: {user.id}) has no configured email address. Email skipped.")
             return False
 
-        use_channel = channel or user.preferred_mail_channel or self.get_default_channel()
         provider = self.get_provider(use_channel)
 
-        if not provider.is_configured():
+        if not self.is_configured(use_channel):
             logger.info(f"Mail provider '{use_channel}' not configured. Notification logged to database only.")
             return False
 

@@ -1,11 +1,13 @@
 import os
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Settings live in backend/.env (see backend/.env.example).
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # =========================================================
 # DATABASE URL
@@ -18,7 +20,7 @@ load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg2://postgres:fctd@localhost:5432/cdtrs"
+    "postgresql+psycopg2://postgres@localhost:5432/cdtrs"  # set the real URL in backend/.env
 )
 
 # Cloud providers (e.g. Render, Railway, Neon, Supabase) often provide URLs starting with "postgres://"
@@ -69,6 +71,8 @@ def ensure_enum_compatibility(engine):
 # exists, so older databases need these added explicitly.
 _ADDED_COLUMNS = [
     ("routing_suggestions", "ranked_departments", "JSON"),
+    ("departments", "description", "TEXT"),
+    ("departments", "keywords", "TEXT"),
 ]
 
 

@@ -3,14 +3,11 @@ semantic/keyword_extractor.py
 ------------------------------
 Extract the most important keywords from a text using offline methods.
 
-Two strategies
---------------
-1.  **YAKE** (Yet Another Keyword Extractor) — unsupervised, language-
-    agnostic, offline.  Preferred when the ``yake`` package is installed.
-2.  **TF-IDF fallback** — uses scikit-learn's TfidfVectorizer on the
-    input text split into sentences.
-
-No network access is required for either strategy.
+Strategy
+--------
+TF-IDF with scikit-learn's TfidfVectorizer over the sentences of the text
+(scikit-learn is pinned in requirements.txt), with a simple word-frequency
+count as a last resort.  No network access is required.
 """
 
 from __future__ import annotations
@@ -38,7 +35,7 @@ def extract_keywords(
     top_n : int
         Maximum number of keywords to return.
     language : str
-        Language code (used by YAKE).
+        Language code (kept for compatibility; English stop words are used).
 
     Returns
     -------
@@ -46,43 +43,13 @@ def extract_keywords(
 
         { "keyword": str, "score": float }
 
-    Score semantics differ by strategy (lower is better for YAKE;
-    higher is better for TF-IDF), but results are always sorted so
-    that the most important keyword appears first.
+    Higher scores are more important; the most important keyword comes first.
     """
     text = text.strip()
     if not text:
         return []
 
-    # --- 1. YAKE ---
-    try:
-        return _yake_extract(text, top_n=top_n, language=language)
-    except ImportError:
-        log.debug("YAKE not available — falling back to TF-IDF keyword extraction.")
-
-    # --- 2. TF-IDF ---
     return _tfidf_extract(text, top_n=top_n)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Strategy implementations
-# ──────────────────────────────────────────────────────────────────────────────
-
-def _yake_extract(
-    text: str, top_n: int, language: str
-) -> list[dict[str, Any]]:
-    import yake  # type: ignore
-
-    extractor = yake.KeywordExtractor(
-        lan=language,
-        n=3,           # max n-gram size
-        dedupLim=0.9,
-        top=top_n,
-    )
-    keywords = extractor.extract_keywords(text)
-    # YAKE: lower score = more important → sort ascending
-    keywords.sort(key=lambda kw: kw[1])
-    return [{"keyword": kw, "score": round(score, 4)} for kw, score in keywords]
 
 
 def _tfidf_extract(text: str, top_n: int) -> list[dict[str, Any]]:

@@ -37,7 +37,7 @@ def main(reset: bool = False):
     print("[OK] All database tables ready.")
 
     # 2. Seed departments, employees, and user accounts
-    print("\n2. Seeding canonical departments & 6 employee records...")
+    print("\n2. Seeding departments and accounts from data/seed_data.json...")
     db = SessionLocal()
     try:
         crud.seed_data(db)
@@ -51,21 +51,17 @@ def main(reset: bool = False):
         print(f"{'Username':<18} | {'Role':<18} | {'Default Password'}")
         print("-" * 65)
         
-        passwords = {
-            "ds_user": "cdtrs@ds",
-            "director": "cdtrs@director",
-            "hod_finance": "cdtrs@hod",
-            "hod_hr": "cdtrs@hod",
-            "hod_tech": "cdtrs@hod",
-            "emp_rahul": "cdtrs@emp",
-            "emp_sunil": "cdtrs@emp",
-            "emp_sneha": "cdtrs@emp",
-            "emp_pooja": "cdtrs@emp",
-            "emp_anil": "cdtrs@emp",
-            "emp_vikram": "cdtrs@emp",
-        }
+        # Default passwords of the accounts defined in data/seed_data.json.
+        import json
+        seed_file = os.path.join(BASE_DIR, "data", "seed_data.json")
+        passwords = {}
+        if os.path.exists(seed_file):
+            with open(seed_file, "r", encoding="utf-8") as fh:
+                seed = json.load(fh)
+            for spec in seed.get("system_users", []) + seed.get("employees", []):
+                passwords[spec.get("username")] = spec.get("default_password", "")
         for u in users:
-            pwd = passwords.get(u.username, "cdtrs@emp")
+            pwd = passwords.get(u.username) or "(not a seeded account)"
             role_val = u.role.value if hasattr(u.role, "value") else str(u.role)
             print(f"{u.username:<18} | {role_val:<18} | {pwd}")
         print("=" * 65)

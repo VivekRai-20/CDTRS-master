@@ -13,13 +13,12 @@ Two backends are supported (in priority order):
 
 Model storage
 -------------
-Place a spaCy-compatible model directory under::
+The installed ``en_core_web_sm`` package (requirements.txt) is used by
+default.  A different spaCy model can be placed in a folder under::
 
-    models/ner/
+    models/ner/          e.g. models/ner/my_model/  (a folder with meta.json)
 
-e.g.::
-
-    models/ner/en_core_web_sm-3.7.1/
+which then takes priority.
 
 Configuration
 -------------
@@ -28,6 +27,7 @@ Configuration
     ner:
       enabled: true
       model_path: "models/ner"
+      package: "en_core_web_sm"
       backend: "spacy"   # "spacy" | "regex"
 
 Supported entity types
@@ -125,41 +125,87 @@ class NEREngine:
     # ------------------------------------------------------------------ #
 
     def _try_load_spacy(self, ner_cfg: dict) -> None:
-        model_path = Path(ner_cfg.get("model_path", "models/ner")).resolve()
+        """Load spaCy: a model folder under models/ner/ first, then the
+        installed model package (en_core_web_sm, in requirements.txt).
+        Nothing is downloaded; without either, the regex backend is used."""
+        root = Path(__file__).resolve().parents[1]
+        model_path = Path(ner_cfg.get("model_path", "models/ner"))
+        model_path = model_path if model_path.is_absolute() else root / model_path
         try:
             import spacy  # type: ignore
-
-            # Find any subdirectory that looks like a spaCy model
-            model_dir = None
-            if model_path.exists():
-                for child in model_path.iterdir():
-                    if child.is_dir() and (child / "meta.json").exists():
-                        model_dir = child
-                        break
-
-            if model_dir is None:
-                log.debug("No spaCy model found in '%s'. Using regex backend.", model_path)
-                return
-
-            self._nlp = spacy.load(str(model_dir))
-            self._backend = "spacy"
-            log.info("NER engine loaded spaCy model from '%s'.", model_dir)
-
         except ImportError:
             log.debug("spaCy not installed. Using regex NER backend.")
-        except Exception as exc:
-            log.warning("Failed to load spaCy model: %s. Using regex backend.", exc)
+            return
+
+        candidates: list[str] = []
+        if model_path.exists():
+            candidates += [
+                str(child) for child in sorted(model_path.iterdir())
+                if child.is_dir() and (child / "meta.json").exists()
+            ]
+        package = str(ner_cfg.get("package", "en_core_web_sm") or "").strip()
+        if package:
+            candidates.append(package)
+
+        for candidate in candidates:
+            try:
+                # Only the named-entity parts are needed.
+                self._nlp = spacy.load(candidate, exclude=["lemmatizer", "textcat"])
+            except Exception as exc:
+                self._nlp = None
+                if candidate == package:
+                    try:  # installed package without pip metadata
+                        import importlib
+                        self._nlp = importlib.import_module(package).load(exclude=["lemmatizer", "textcat"])
+                    except Exception:
+                        pass
+                if self._nlp is None:
+                    log.debug("spaCy model '%s' not usable: %s", candidate, exc)
+                    continue
+            self._backend = "spacy"
+            log.info("NER engine loaded spaCy model '%s'.", candidate)
+            return
+        log.debug("No spaCy model found (%s). Using regex backend.", model_path)
+
+    # spaCy labels worth reporting; the rest (CARDINAL, ORDINAL, NORP, ...)
+    # only add noise to the extracted fields.
+    _SPACY_LABELS = {"PERSON", "ORG", "GPE", "LOC", "DATE", "TIME", "MONEY"}
+
+    @staticmethod
+    def _plausible(label: str, value: str) -> bool:
+        """Drop entities the small English model gets wrong on OCR text:
+        URLs, numbers read as names, durations read as dates, and so on."""
+        if "://" in value or "@" in value or len(value) > 80:
+            return False
+        words = value.replace(".", ". ").split()
+        if label in ("DATE", "TIME", "MONEY"):
+            if not any(ch.isdigit() for ch in value):
+                return False  # "annual", "today"
+            return not re.search(r"\b(years?|months?|weeks?|days?|hours?)\b", value, re.IGNORECASE)
+        if any(ch.isdigit() for ch in value):
+            return False
+        if label == "PERSON":
+            return 1 <= len(words) <= 5 and all(w[:1].isalpha() and w[:1].isupper() for w in words)
+        return len(words) <= 8
 
     def _spacy_extract(self, text: str) -> list[dict[str, Any]]:
         doc = self._nlp(text)
         entities: list[dict[str, Any]] = []
         for ent in doc.ents:
+            if ent.label_ not in self._SPACY_LABELS:
+                continue
+            # OCR text has line breaks; an entity never continues past one.
+            value = ent.text.split("\n")[0].strip(" ,;:")
+            if len(value) < 2:
+                continue
+            if not self._plausible(ent.label_, value):
+                continue
             entities.append(
                 {
-                    "text":       ent.text.strip(),
+                    "text":       value,
                     "label":      ent.label_,
                     "start":      ent.start_char,
-                    "end":        ent.end_char,
+                    "end":        ent.start_char + len(ent.text.split("\n")[0]),
                     "confidence": 0.85,
                 }
             )

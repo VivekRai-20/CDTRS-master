@@ -1,26 +1,36 @@
-﻿# models/classifiers/
+# models/classifiers/
 
-Place trained classification models here.
+Optional classifiers trained on **your own** labelled data. Without them, the
+built-in fallbacks are used, so nothing needs to be here.
 
-## document/
+## text_type/: printed or handwritten line
 
-ML classifier for document category:
+```
+models/classifiers/text_type/
+├── classifier.pkl          Random Forest on line-shape features
+├── classifier_<date>.pkl   earlier versions (kept as backups)
+└── model_meta.json         test scores, date, number of lines
+```
 
-    models/classifiers/document/
-    ├── classifier.pkl
-    ├── vectorizer.pkl
-    └── label_encoder.pkl
+Train it with `python fineTune/training/train.py --task text_type`, using the lines
+labelled with `fineTune/label_tool.py`. Without `classifier.pkl`, the built-in model
+in `ocr/text_type_detector.py` is used. To go back to it, delete or rename
+`classifier.pkl` and restart the backend.
 
-Train using: python fineTune/training/train.py --config fineTune/configs/classification.yaml
+## document/: document category
 
-## text_type/
+```
+models/classifiers/document/
+├── classifier.pkl      Logistic Regression
+├── vectorizer.pkl      TF-IDF vocabulary
+├── label_encoder.pkl   category names
+└── model_meta.json
+```
 
-Classifier for PRINTED vs HANDWRITTEN detection:
+Train it with `python fineTune/training/train.py --task classification`, using
+documents in `fineTune/datasets/classification/<CATEGORY>/`. The OCR uses it instead
+of the keyword rules when it is at least `classification.min_model_confidence` sure
+(set in `config/config.yaml`).
 
-    models/classifiers/text_type/
-    └── classifier.pkl
-
-Train using: python fineTune/training/train.py --config fineTune/configs/text_type.yaml
-
-Both classifiers are optional — rule-based and heuristic fallbacks
-are used when no trained model is present.
+For both classifiers, see **`fineTune/README.md`**. These folders are not tracked by
+git.

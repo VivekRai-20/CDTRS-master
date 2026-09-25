@@ -3,11 +3,11 @@ from dataclasses import dataclass
 
 
 def _load_env_file():
-    """Attempts to load .env file from current, frontend, or root directory."""
+    """Loads frontend/.env (the frontend's settings file).  Only when it does
+    not exist, a .env in the current folder is tried."""
     search_paths = [
-        os.path.join(os.getcwd(), ".env"),
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"),
-        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env"),
+        os.path.join(os.getcwd(), ".env"),
     ]
     for env_path in search_paths:
         if os.path.exists(env_path):

@@ -1,100 +1,115 @@
-# OCR Integration Status Report & Handover Guide
+# OCR integration: status and handover
 
-This document outlines the current state of the new offline OCR integration within the CDTRS (Central Document Tracking & Routing System), explaining how the pipeline functions across the backend and frontend, and providing a step-by-step guide on what remains to be implemented to achieve full integration.
-
----
-
-## 1. System Overview (How It Works)
-
-**CDTRS** is a system for tracking and routing documents across organizational departments and employees. 
-
-**The New OCR Engine (`OCR_new/`)**:
-The system includes a 100% offline OCR and Document Intelligence Engine. It doesn't just extract raw text; it performs layout analysis, text-type detection (handwritten vs. printed), semantic matching, and field extraction (like identifying if the Director has already written a remark on the physical document).
-
-**The Pipeline**:
-1. **Intake**: A document (PDF/Image) is uploaded via the Frontend (`document_intake.py`).
-2. **Backend OCR Trigger**: The backend intercepts this upload and triggers `trigger_ocr_processing()` inside `backend/intelligence.py`.
-3. **Adapter**: `backend/ocr_adapter.py` acts as a bridge, invoking the `OCR_new` Python module.
-4. **Data Storage**:
-   - The raw text and confidence scores are saved to the `DocumentOCR` database table.
-   - Specific fields (e.g., `DIRECTOR_HANDWRITTEN_REMARK`, `PRIOR_DIRECTOR_REVIEW_DETECTED`) are saved to the `DocumentExtractedField` table.
-5. **Routing Suggestion**: The backend runs a semantic matching algorithm to compare the OCR text against department profiles. It generates a `RoutingSuggestion` record, which now includes a `ranked_departments` JSON list (e.g., `[{department: "Engineering", score: 0.85}, ...]`).
+How the offline OCR engine (`OCR_new/`) is wired into CDTRS, what it does today,
+and where to change things. All the planned integration tasks (A–E) are finished.
 
 ---
 
-## 2. What Works Currently (Completed)
+## 1. How it works
 
-**Backend Integration is Complete:**
-- `update_intelligence.py` has successfully patched the backend routing logic.
-- The `OCR_new` pipeline is fully wired up via `ocr_adapter.py` and successfully runs locally without internet.
-- Semantic matching executes correctly, populating the `ranked_departments` JSON payload in the API response.
-- Specific extracted fields (like Director remarks) are successfully captured into the database as "unverified" extractions.
+```
+Desktop app                     Backend                                  OCR_new (in the backend process)
+───────────                     ───────                                  ────────────────────────────────
+Intake page ── file ──►  POST /intelligence/analyze  ─┐
+  (preview before                                     ├─► ocr_adapter.py ─► DocumentProcessor.process()
+   registering)                                       │                      PaddleOCR 2.8.1 (lines)
+DS registers ─────────►  POST /intake/manual-upload   │                      printed / handwritten per line
+Mailbox sync ─────────►  DS processes intake message ─┘                      TrOCR re-reads handwriting
+                                  │                                          entities, fields, Director remarks
+                                  ▼
+            DocumentOCR (text, confidence)
+            DocumentExtractedField (unverified), e.g. DIRECTOR_HANDWRITTEN_REMARK,
+                                                      PRIOR_DIRECTOR_REVIEW_DETECTED
+            RoutingSuggestion.ranked_departments  [{department, department_id, score}, …]
+```
 
-**Frontend Integration (Partial):**
-- The document upload successfully hits the backend and triggers the OCR process.
-- The UI can read the basic `routing_suggestion` and auto-populate a single dropdown choice if a high-confidence match is found.
+- **One engine, on the server.** The desktop app does not load PaddleOCR or torch.
+  `frontend/services/ocr_adapter.py` sends the file to the backend
+  (`/api/v1/intelligence/analyze`, or `/analyze-text` for text). The backend loads the
+  engine once (`backend/ocr_adapter.py`) and warms it up in a background thread when
+  it starts.
+- **The server stays responsive.** OCR runs in worker threads, and the intake page
+  shows a busy dialog instead of freezing.
+- **Windows DLL order.** On Windows, torch must be loaded before PaddlePaddle, and
+  pyarrow/pandas before PaddleOCR. Otherwise the backend crashes silently, and the app
+  reports *"WebSocket error: The remote host closed the connection"*. This is handled
+  in `backend/ocr_adapter.py`, `backend/main.py` and `OCR_new/utils/native_libs.py`.
+  Keep those imports at the top.
 
----
+## 2. What is done
 
-## 3. What is Remaining (To-Do for Next Developer)
+| Task | Status | Where |
+|---|---|---|
+| **A** Ranked department suggestions in the routing dialog | Done | `RoutingDialog` in `frontend/components/routing_dialogs.py` shows the top 5 as clickable chips |
+| **B** DS verification of Director remarks found by OCR | Done | `frontend/components/document_viewer.py` (DS only): editable remark, confirmation checkbox, **Verify & Save**. It is deliberately not on the intake page, which must never bypass Director review |
+| **C** Workflow gate trusts only verified values | Done | `backend/workflow.py` `_ocr_prior_director_review_detected` uses `verified_value` only. Re-running OCR keeps DS-verified values |
+| **D** Department descriptions and keywords for routing | Done | see below |
+| **E** Frontend intake uses OCR_new (server-side) | Done | `OCR_old/` removed |
 
-The backend is doing all the heavy lifting and returning rich intelligent data, but the **Frontend UI is currently ignoring the advanced data**. The remaining tasks focus on exposing this data to the user and allowing them to verify it.
+### Task D: department descriptions and routing keywords
 
-### Task A: Frontend Display of Ranked Departments (DONE)
-**Status**: Completed. `ranked_departments` (each with `department`, `department_id`, `score`, best first) is returned by `/documents/{id}` and `/documents/{id}/routing-suggestion`. `RoutingDialog` shows the top 5 as clickable chips that set the Department row.
+- `departments.description` and `departments.keywords` (`backend/models.py`) are added
+  to existing databases automatically on start (`database.ensure_schema_columns`).
+- The Admin edits them in **Admin → Department Configuration**: a *Description* box
+  and *Routing keywords* (comma separated), shown in the table and searchable. They
+  can also be imported with `backend/import_from_csv.py`. The demo departments in
+  `backend/data/seed_data.json` come with both.
+- `backend/intelligence.py` builds each department's profile from its name,
+  description and keywords, and uses it for semantic similarity.
+- Configured keywords found in the document raise the score: 1 hit → 0.55, 2 → 0.75,
+  3 or more → 0.9. Keywords of 3 characters or less (for example `HR`, `IT`) count
+  only as whole words in capitals, so "it" in a sentence does not match.
 
-**The Goal**: Instead of just defaulting a dropdown to a single department, show the user the top 3-5 departments the AI thinks this document belongs to, along with their confidence scores.
+## 3. What the OCR engine does now
 
-**Files to Modify**: 
-- `frontend/components/routing_dialogs.py` (specifically `RoutingDialog`)
+| Area | Behaviour |
+|---|---|
+| Printed text | PaddleOCR 2.8.1, CPU: PP-OCRv3 text detection, PP-OCRv4 recognition. Models are in `OCR_new/models/paddleocr/` (tracked in git) |
+| Memory | Pages are padded to 3 square sizes, and lines are read one at a time with widths rounded to fixed steps. One A4 page needed more than 6 GB before; the peak is now about 3 GB (`paddleocr:` settings in `config.yaml`) |
+| Printed vs handwritten | `ocr/text_type_detector.py`: 20 line-shape features and a built-in logistic model. Lines with fewer than 3 glyphs are UNKNOWN. A classifier trained on your own lines replaces the built-in model when present |
+| Handwriting | TrOCR (`trocr-small-handwritten`) re-reads HANDWRITTEN lines, and UNKNOWN lines where PaddleOCR is less than 90% sure. Its reading replaces PaddleOCR's only if it is at least 50% confident and at least as confident as PaddleOCR. About 25 s per handwritten page on 2 CPU cores |
+| Director instructions | `backend/ocr_adapter.py` looks at the handwritten lines and scores them for instruction words ("put up", "discuss", "for action", "see me", …). It ignores address lines such as "To, The Director". It returns the best line together with the handwritten lines next to it, as `DIRECTOR_HANDWRITTEN_REMARK` / `PRIOR_DIRECTOR_REVIEW_DETECTED`. The result stays unverified until the DS confirms it. A printed letter no longer triggers a false instruction |
+| Entities | spaCy `en_core_web_sm` 3.8.0 with a whitelist of useful labels and a plausibility filter. Dates are no longer invented from the current day |
+| Fields | `backend/ocr_adapter.py` maps OCR_new fields to CDTRS fields and does not duplicate entity labels that are already mapped |
 
-**Instructions**:
-1. Parse `document.routing_suggestion.ranked_departments` (which will be a JSON list).
-2. Update the UI to render a list of cards or a small table showing the suggested department names and scores (e.g., "Engineering - 85% match").
-3. Make these visual elements clickable so that clicking one immediately selects it as the routing destination in the dialog.
+## 4. One-time setup on a new server
 
-### Task B: Director Remark UI Verification (DONE)
-**Status**: Completed in `frontend/components/document_viewer.py` (DS only): an "OCR: Director Instruction Found on the Document" panel with an editable remark, a confirmation checkbox and **Verify & Save**, which writes `verified_value` for `DIRECTOR_HANDWRITTEN_REMARK` and `PRIOR_DIRECTOR_REVIEW_DETECTED`. It is deliberately not on the intake page, which must never bypass the Director review. Desktop intake now sends its OCR_new fields (including handwritten-Director detections) to the backend, where they are stored unverified.
+```
+cd /d C:\CDTRS-main\OCR_new
+python setup_models.py --check
+python fineTune\download_base_model.py
+```
 
-**The Goal**: OCR data is inherently advisory (prone to errors). The Director Secretary (DS) must manually verify the AI's findings before the system completely trusts them.
+The first command checks that the PaddleOCR models are present. The second downloads
+the handwriting model (about 250 MB; internet is needed only this once).
 
-**Files to Modify**: 
-- `frontend/pages/document_intake.py` 
-- `frontend/components/document_viewer.py`
+Then restart the backend. Without the handwriting model, everything works, but
+handwriting is read by PaddleOCR only.
 
-**Instructions**:
-1. During the document intake or initial viewing process, if `document.extracted_fields` contains `DIRECTOR_HANDWRITTEN_REMARK` or `PRIOR_DIRECTOR_REVIEW_DETECTED`, render a distinct "AI Extraction Verification" panel.
-2. Display the raw extracted remark text in an editable `QTextEdit` widget. Allow the user to fix any OCR typos.
-3. Display a checkbox for `PRIOR_DIRECTOR_REVIEW_DETECTED`.
-4. Add a "Verify & Save" button that sends a payload to the backend to update the `verified_value` and `verified_by` columns for those `DocumentExtractedField` records.
+## 5. Improving accuracy on your documents
 
-### Task C: Enforce Workflow Gate Constraints (DONE)
-**Status**: `_ocr_prior_director_review_detected` only trusts `verified_value`. Re-running OCR keeps DS-verified values.
+Follow **[OCR_new/fineTune/README.md](OCR_new/fineTune/README.md)**:
 
-**The Goal**: The workflow routing system must strictly rely on the *verified* value, not the raw AI extraction, to skip mandatory Director review steps.
+1. Put scans or PDFs of your handwriting in `fineTune\datasets\raw\`.
+2. Run `prepare_dataset.py` to cut them into lines.
+3. Label the lines with `label_tool.py`.
+4. Run `train.py --task handwriting`.
+5. Run `evaluate.py`.
+6. Restart the backend.
 
-**Files to Modify**: 
-- `backend/workflow.py` (specifically `_ocr_prior_director_review_detected` and `_assert_director_review_before_work_routing`)
+A new model is activated only if it reads the held-back test lines better than the
+current one. `set_active_model.py` rolls back.
 
-**Instructions**:
-1. Update `_ocr_prior_director_review_detected` to query `models.DocumentExtractedField`.
-2. Ensure it returns `True` **only if** the `verified_value` explicitly confirms it (e.g., `verified_value.lower() == 'true'`). It must ignore `extracted_value` if it hasn't been verified by a human yet.
+## 6. Where to look when something is wrong
 
-### Task D: Enrich Department Metadata for Accurate Semantic Routing
-**The Goal**: The OCR semantic matching currently compares document text against a highly limited string: `"Department name: X (code: Y)"`. Because the database lacks descriptive profiles for departments, the AI struggles to route documents based on context (e.g., routing a "bridge structural integrity report" to "Engineering"). 
+| Symptom | Look at |
+|---|---|
+| Backend window closes during the first OCR / WebSocket closed | DLL import order (section 1); the `[STARTUP]` lines in the backend window |
+| OCR very slow the first time | Warm-up still running (20–60 s after start) |
+| Wrong department suggested | The department's description and keywords in Admin → Department Configuration |
+| Handwriting not re-read | `models\handwriting\active.txt`, `handwriting.enabled` in `OCR_new\config\config.yaml`, and `OCR_new\output\ocr_system.log` |
+| Printed lines treated as handwritten | Train the text-type classifier (`train.py --task text_type`) |
+| Memory errors | The `paddleocr:` memory settings in `config.yaml`; do not raise `text_det_limit_side_len` |
 
-**Files to Modify**:
-- `backend/models.py` (specifically `Department` class)
-- `backend/intelligence.py` (specifically the `generate_routing_suggestion` function logic patched by `update_intelligence.py`)
-
-**Instructions**:
-1. Add `description = Column(Text, nullable=True)` and `keywords = Column(Text, nullable=True)` to the `Department` database model.
-2. Update the semantic matching loop to build a richer reference text: `desc = f"Department: {d.name}. Description: {d.description}. Keywords: {d.keywords}"`.
-3. Update the frontend UI in `department_configuration.py` to allow admins to define these descriptions and keywords. This will immediately make the OCR semantic routing significantly more accurate.
-### Task E: Upgrade Frontend Intake to Use the New OCR Pipeline (DONE)
-**Status**: Completed. The frontend intake OCR now runs on `OCR_new`, and the old `OCR_old/` folder has been removed.
-
-**What was done** (Option A, server-side OCR):
-- The desktop app no longer loads PaddleOCR / torch. `frontend/services/ocr_adapter.py` sends the selected file to the backend (`POST /api/v1/intelligence/analyze`, text only: `POST /api/v1/intelligence/analyze-text`), which runs OCR_new once, on the server, and returns text, fields, handwriting / Director detection and a department + staff suggestion. Nothing is stored until the DS registers the document.
-- Department suggestions (`backend/intelligence.py: rank_departments`) combine keyword evidence (department name/code, a topic lexicon keyed on department names, OCR-extracted "Department:" lines, staff named in the text) with semantic similarity from OCR_new's local embedding model, matched against the departments in the database.
-- Registration, mailbox sync and routing from the intake page run on a worker thread (`frontend/components/busy_dialog.py`), so the window never shows "Not Responding".
+Tests: `cd OCR_new` and `python -m unittest discover -s testing -t . -v`. See also
+[OCR_new/README.md](OCR_new/README.md).

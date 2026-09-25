@@ -6,7 +6,7 @@ Unit tests for the extraction module (NER, regex, entity extractor).
 
 from __future__ import annotations
 
-import pytest
+import unittest
 
 from nlp.ner_engine import NEREngine
 from nlp.text_cleaner import clean, split_sentences
@@ -14,8 +14,8 @@ from nlp.entity_normalizer import normalize_entity, normalize_entities
 from extraction.entity_extractor import EntityExtractor
 
 
-class TestNEREngine:
-    def setup_method(self):
+class TestNEREngine(unittest.TestCase):
+    def setUp(self):
         self.ner = NEREngine(config={})
         self.ner.initialize()
 
@@ -47,7 +47,7 @@ class TestNEREngine:
             assert "confidence" in ent
 
 
-class TestTextCleaner:
+class TestTextCleaner(unittest.TestCase):
     def test_clean_basic(self):
         text = "Hello   World\n\n\nThis is  a test."
         result = clean(text)
@@ -67,7 +67,7 @@ class TestTextCleaner:
         assert len(sentences) >= 2
 
 
-class TestEntityNormalizer:
+class TestEntityNormalizer(unittest.TestCase):
     def test_normalize_email(self):
         result = normalize_entity("  User@EXAMPLE.COM  ", "EMAIL")
         assert result == "user@example.com"
@@ -90,8 +90,8 @@ class TestEntityNormalizer:
         assert result[0]["normalized_text"] == "user@test.com"
 
 
-class TestEntityExtractor:
-    def setup_method(self):
+class TestEntityExtractor(unittest.TestCase):
+    def setUp(self):
         self.extractor = EntityExtractor(config={})
 
     def test_extract_returns_dict(self):

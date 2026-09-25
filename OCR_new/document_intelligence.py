@@ -34,6 +34,10 @@ import sys
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from utils.native_libs import preload as _preload_native_libs  # noqa: E402
+
+_preload_native_libs()  # torch / pyarrow before paddle (Windows)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DocumentResult
@@ -176,9 +180,12 @@ class DocumentProcessor:
         self._layout_analyzer = None
         self._text_type_detector = None
         self._rule_classifier = None
+        self._model_classifier = None
         self._entity_extractor = None
         self._regex_engine = None
         self._semantic_pipeline = None
+        self._handwriting_engine = None
+        self._handwriting_checked = False
 
     @staticmethod
     def _load_config(path: Path) -> dict[str, Any]:
@@ -214,11 +221,92 @@ class DocumentProcessor:
             self._text_type_detector = TextTypeDetector(self.config)
         return self._text_type_detector
 
+    def _get_handwriting_engine(self):
+        """The TrOCR handwriting reader, or None when no model is active
+        (models/handwriting/active.txt) or it is disabled in config.yaml."""
+        if not self._handwriting_checked:
+            self._handwriting_checked = True
+            from ocr.handwriting_engine import HandwritingEngine
+            if HandwritingEngine.is_available(self.config):
+                try:
+                    engine = HandwritingEngine()
+                    engine.initialize(self.config)
+                    self._handwriting_engine = engine
+                except Exception as exc:
+                    log.warning("Handwriting model could not be loaded: %s", exc)
+            else:
+                log.info("No handwriting model is active; handwritten lines keep PaddleOCR's text.")
+        return self._handwriting_engine
+
+    def _read_handwriting(self, regions: list[dict[str, Any]], page_images: dict[int, Any]) -> int:
+        """Re-read handwritten lines with the handwriting model.
+
+        A line is re-read when it is HANDWRITTEN, or UNKNOWN and PaddleOCR
+        was unsure.  Its text is replaced only when the handwriting model is
+        at least as confident as PaddleOCR; both readings are kept on the
+        region (paddle_text / handwriting_text).  Returns the number of lines
+        whose text was replaced."""
+        engine = self._get_handwriting_engine()
+        if engine is None:
+            return 0
+        hw_cfg = self.config.get("handwriting", {})
+        unsure_below = float(hw_cfg.get("replace_below_confidence", 0.9))
+        min_conf = float(hw_cfg.get("min_confidence", 0.5))
+        max_lines = int(hw_cfg.get("max_lines_per_page", 80))
+
+        targets: list[tuple[dict[str, Any], Any]] = []
+        per_page: dict[int, int] = {}
+        for region in regions:
+            text_type = region.get("text_type")
+            confidence = float(region.get("confidence") or 0.0)
+            if not (text_type == "HANDWRITTEN" or (text_type == "UNKNOWN" and confidence < unsure_below)):
+                continue
+            page = region.get("page", 1)
+            image = page_images.get(page)
+            bbox = region.get("bbox") or []
+            if image is None or len(bbox) != 4 or per_page.get(page, 0) >= max_lines:
+                continue
+            h, w = image.shape[:2]
+            x1, y1 = max(0, int(bbox[0])), max(0, int(bbox[1]))
+            x2, y2 = min(w, int(bbox[2])), min(h, int(bbox[3]))
+            if x2 - x1 < 8 or y2 - y1 < 8:
+                continue
+            targets.append((region, image[y1:y2, x1:x2]))
+            per_page[page] = per_page.get(page, 0) + 1
+        if not targets:
+            return 0
+
+        readings = engine.read_lines([crop for _, crop in targets])
+        replaced = 0
+        for (region, _), (text, confidence) in zip(targets, readings):
+            region["handwriting_text"] = text
+            region["handwriting_confidence"] = confidence
+            if text and confidence >= min_conf and confidence >= float(region.get("confidence") or 0.0):
+                region["paddle_text"] = region.get("text", "")
+                region["paddle_confidence"] = region.get("confidence")
+                region["text"] = text
+                region["confidence"] = confidence
+                region["recognizer"] = "handwriting"
+                replaced += 1
+        log.info("Handwriting model re-read %d line(s), replaced %d.", len(targets), replaced)
+        return replaced
+
     def _get_rule_classifier(self):
         if self._rule_classifier is None:
             from classification.rule_classifier import RuleClassifier
             self._rule_classifier = RuleClassifier(self.config)
         return self._rule_classifier
+
+    def _get_model_classifier(self):
+        """Trained document classifier (fineTune --task classification), or None."""
+        if self._model_classifier is None:
+            try:
+                from classification.model_classifier import ModelClassifier
+                self._model_classifier = ModelClassifier(self.config)
+            except Exception as exc:
+                log.debug("Document classifier unavailable: %s", exc)
+                self._model_classifier = False
+        return self._model_classifier or None
 
     def _get_entity_extractor(self):
         if self._entity_extractor is None:
@@ -302,7 +390,7 @@ class DocumentProcessor:
 
         # ── Step 4: Text-Type Detection ───────────────────────────────────── #
         text_types_summary: list[dict[str, Any]] = []
-        if mode in ("full",):
+        if mode in ("full",) and self.config.get("text_type_detection", {}).get("enabled", True):
             try:
                 tt_detector = self._get_text_type_detector()
                 # Run detection on each page's regions
@@ -310,17 +398,27 @@ class DocumentProcessor:
                     page_regions = [r for r in regions if r.get("page", 1) == p.page_number]
                     if page_regions and p.image is not None:
                         tt_detector.detect_regions(page_regions, p.image)
-                # Build summary
-                for r in regions:
-                    if "text_type" in r:
-                        text_types_summary.append({
-                            "page": r.get("page", 1),
-                            "text": r.get("text", "")[:40],
-                            "text_type": r.get("text_type", "UNKNOWN"),
-                            "confidence": r.get("text_type_confidence", 0.0),
-                        })
             except Exception as exc:
                 log.warning("Text-type detection skipped: %s", exc)
+
+            # ── Step 4b: Handwriting recognition (TrOCR, when a model is active) ── #
+            try:
+                page_images = {p.page_number: p.image for p in norm_doc.pages if p.image is not None}
+                if self._read_handwriting(regions, page_images):
+                    from ocr.ocr_pipeline import OCRPipeline
+                    full_text = OCRPipeline._build_full_text(regions)
+            except Exception as exc:
+                log.warning("Handwriting recognition skipped: %s", exc)
+
+            for r in regions:
+                if "text_type" in r:
+                    text_types_summary.append({
+                        "page": r.get("page", 1),
+                        "text": r.get("text", "")[:40],
+                        "text_type": r.get("text_type", "UNKNOWN"),
+                        "confidence": r.get("text_type_confidence", 0.0),
+                        "recognizer": r.get("recognizer", "paddleocr"),
+                    })
 
         # ── Step 5: Document Classification ───────────────────────────────── #
         classification_result: dict[str, Any] = {}
@@ -331,6 +429,15 @@ class DocumentProcessor:
             except Exception as exc:
                 log.warning("Rule classification failed: %s", exc)
                 classification_result = {"label": "UNKNOWN", "confidence": 0.0}
+            # A classifier trained on your own documents (optional) wins when
+            # it is more confident than the keyword rules.
+            model_classifier = self._get_model_classifier()
+            if model_classifier is not None and model_classifier.is_ready:
+                ml_result = model_classifier.classify(full_text)
+                min_conf = float((self.config.get("classification") or {}).get("min_model_confidence", 0.6))
+                if ml_result.get("label") not in (None, "UNKNOWN") and ml_result.get("confidence", 0.0) >= min_conf \
+                        and ml_result["confidence"] >= float(classification_result.get("confidence", 0.0)):
+                    classification_result = ml_result
 
         # ── Step 6: Information & Entity Extraction ───────────────────────── #
         entities: list[dict[str, Any]] = []

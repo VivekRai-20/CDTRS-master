@@ -78,13 +78,42 @@ The organisation designates exactly **one** TSO at a time
 |---|---|
 | `models.py` | Schema. Every table, every enum. |
 | `workflow.py` | **The workflow engine.** All routing, assignment, stages, reviews, closure, visibility, reminders. The single place workflow rules live. |
-| `crud.py` | Identity, contexts, intake, attachments, admin, seeding. No workflow. |
+| `crud.py` | Identity, contexts, intake, attachments (unique file names, duplicate checks), admin, seeding / import. No workflow. |
 | `intelligence.py` | OCR and routing suggestions. Assistive only — never routes anything. |
+| `ocr_adapter.py` | Bridge to the offline OCR engine in `OCR_new/` (loaded once, warmed up at start). |
+| `mail/` | Mailbox sync and notification e-mails: `outlook_provider.py` (Microsoft Graph), `intranet_provider.py` (IMAP/SMTP), `service.py`. |
 | `serializers.py` | ORM → API shapes. |
 | `schemas.py` | Request/response contracts. |
-| `main.py` | HTTP endpoints and context dependency. |
+| `main.py` | HTTP endpoints, WebSocket, context dependency, background mailbox sync and reminders. |
+| `run_server.py` | Starts uvicorn with HOST/PORT from `backend/.env`. |
+
+## Intake, OCR and suggestions
+
+```
+manual upload ─────────► Document + ORIGINAL attachment (duplicate file → 409)
+mailbox sync ─► intake message ─► DS registers it ─► Document
+                           │
+                           ▼ background thread
+                        OCR_new: PaddleOCR → printed/handwritten per line →
+                        TrOCR re-reads handwriting → entities, fields
+                           │
+                           ├─► DocumentOCR (text), DocumentExtractedField (unverified)
+                           │     e.g. DIRECTOR_HANDWRITTEN_REMARK, PRIOR_DIRECTOR_REVIEW_DETECTED
+                           └─► RoutingSuggestion.ranked_departments
+                                 (semantic similarity + department description and
+                                  routing keywords set by the Admin)
+```
+
+- Suggestions only pre-fill the DS's routing dialog; the DS decides.
+- A Director instruction found by OCR counts only after the DS has **verified** it
+  (`verified_value`); only then may work be routed without a new Director review.
+- Department descriptions and routing keywords are edited in Admin → Department
+  Configuration (or imported with `backend/import_from_csv.py`).
 
 ## Key endpoints
+
+All paths are under `/api/v1` (e.g. `http://127.0.0.1:8000/api/v1/documents/12/close`);
+[backend/readme.md](backend/readme.md) lists every endpoint.
 
 ```
 POST /documents/{id}/branches        route — one or MANY targets at once
@@ -115,52 +144,87 @@ branch with its own stage, e.g.
 ```
 Engineering HOD: Employee Work
 Anil Kumar: Completed
-TSO: Technical Work
+TSO: In Progress
 ```
 
 ---
 
 ## Running it
 
-```bash
-# 1. Database (destructive — drops and re-seeds)
-cd backend && python reset_db.py --confirm
+Settings live in `backend/.env` (template `backend/.env.example`) and
+`frontend/.env` (template `frontend/.env.example`).
 
-# 2. Backend
-cd backend && python -m uvicorn main:app --reload --port 8000
+Double-click `start_backend.bat` and `start_frontend.bat`, or:
 
-# 3. Client
+```bat
+cd backend
+python run_server.py
+```
+
+`run_server.py` takes HOST and PORT from `backend\.env`. Then, from the project folder:
+
+```bat
 python main.py
 ```
 
-Clear documents without re-seeding accounts:
+On start the backend creates missing tables and columns and adds the departments
+and accounts of `backend/data/seed_data.json` **that do not exist yet**. It never
+changes existing accounts, contexts or the chosen TSO.
 
-```bash
-cd backend && python clear_documents.py --confirm
-```
+Maintenance (from `backend/`):
+
+| Command | Effect |
+|---|---|
+| `python reset_db.py --confirm` | **Destructive**: drop everything, rebuild, seed |
+| `python clear_documents.py --confirm` | Delete all documents, keep accounts |
+| `python import_from_csv.py --check` | Validate real departments / accounts; run again without `--check` to import |
+| `python backup_database.py` | `pg_dump` + zip of uploads into `..\backups` |
 
 ## Tests
 
-```bash
-cd backend && python tests/test_full_workflow.py     # engine, direct against the DB
-cd backend && python tests/test_api_workflow.py      # full HTTP workflow incl. context headers
-cd backend && python -m pytest tests/test_context_audit.py -q
-cd frontend && python tests/test_ui_smoke.py         # every page, every context, headless
+No test framework is needed (pytest is not part of the installed packages). The
+backend and UI tests use the demo accounts and create documents, so run them
+against a separate test database and a test server on port 8123 (see readme.md →
+Tests):
+
+```bat
+cd /d C:\CDTRS-main\backend
+set DATABASE_URL=postgresql+psycopg2://postgres:<password>@localhost:5432/cdtrs_test
+set UPLOAD_DIR=./uploads_test
+python run_server.py --port 8123 --host 127.0.0.1 --no-mail
 ```
 
-The API and UI tests need a server running on port 8123:
-
-```bash
-cd backend && python -m uvicorn main:app --port 8123
-```
+| Command (run in the folder shown, second window, same `set` lines) | Tests |
+|---|---|
+| `backend> python tests\test_full_workflow.py` | Workflow engine, directly against the database |
+| `backend> python tests\test_api_workflow.py` | Full HTTP workflow, including context headers |
+| `backend> python tests\test_context_audit.py` | Context and authorization audit |
+| `frontend> python tests\test_ui_smoke.py` | Every page in every context, headless |
+| `OCR_new> python -m unittest discover -s testing -t . -v` | OCR engine and fine-tuning helpers (no database) |
 
 ## Seeded accounts
+
+Demo data from `backend/data/seed_data.json` (15 departments, 17 accounts).
 
 | Username | Password | Contexts |
 |---|---|---|
 | `exec_user` | `cdtrs@ds` | DS |
 | `director` | `cdtrs@director` | Director |
-| `hod_eng` | `cdtrs@hod` | HOD Engineering, HOD Customer Experience |
-| `emp_rahul` | `cdtrs@emp` | Employee Engineering, HOD Product Strategy |
-| `tso_user` | `cdtrs@tso` | TSO, Employee Engineering |
 | `corp` | `cdtrs@admin` | Admin |
+| `tso_user` | `cdtrs@tso` | TSO, Employee Engineering & Innovation |
+| `hod_prod` | `cdtrs@hod` | HOD Product Strategy, HOD Enterprise Solutions |
+| `hod_eng` | `cdtrs@hod` | HOD Engineering & Innovation, HOD Customer Experience |
+| `hod_cit` | `cdtrs@hod` | HOD Information Technology, HOD Talent Management |
+| `hod_corp` | `cdtrs@hod` | HOD Corporate Administration, Finance & Accounts, Business Support, Operations & Procurement |
+| `hod_ptc` | `cdtrs@hod` | HOD Partnerships & Technology, Product Consulting, Corporate Research, Market & Business Transformation |
+| `emp_anil` | `cdtrs@emp` | Employee Product Strategy |
+| `emp_vikram` | `cdtrs@emp` | Employee Product Strategy, HOD Enterprise Solutions |
+| `emp_sneha` | `cdtrs@emp` | Employee Engineering, HOD Customer Experience |
+| `emp_rahul` | `cdtrs@emp` | Employee Engineering, HOD Product Strategy |
+| `emp_sunil` | `cdtrs@emp` | Employee Information Technology, HOD Talent Management |
+| `emp_pooja` | `cdtrs@emp` | Employee Corporate Administration, HOD Finance & Accounts |
+| `emp_kamble` | `cdtrs@emp` | Employee Finance & Accounts |
+| `emp_rajesh` | `cdtrs@emp` | Employee Operations & Procurement, HOD Business Support |
+
+Replace them with your real organisation before going live — see
+[DATA_MANAGEMENT_GUIDE.md](DATA_MANAGEMENT_GUIDE.md).

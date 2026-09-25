@@ -7,7 +7,7 @@ These tests REQUIRE the PaddleOCR models to be installed in models/paddleocr/.
 Run setup_models.py first if models are not yet downloaded.
 
 Run with:
-    python -m pytest testing/test_ocr.py -v
+    python -m unittest testing.test_ocr -v
 or:
     python testing/test_ocr.py
 """

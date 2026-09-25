@@ -13,7 +13,8 @@ import requests
 
 # Microsoft Graph Public Client ID for Personal / Consumer accounts
 CLIENT_ID = "14d82eec-204b-4c2f-b7e8-296a70dab67e"  # Microsoft Graph Public Client
-SCOPES = "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read offline_access"
+# Mail.ReadWrite (not only Mail.Read) so that imported messages can be marked as read.
+SCOPES = "https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read offline_access"
 DEVICE_CODE_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode"
 TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 GRAPH_ME_URL = "https://graph.microsoft.com/v1.0/me"

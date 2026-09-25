@@ -7,7 +7,7 @@ These tests do NOT require PaddleOCR or any model files.
 They run purely on text and regex logic.
 
 Run with:
-    python -m pytest testing/test_patterns.py -v
+    python -m unittest testing.test_patterns -v
 or:
     python testing/test_patterns.py
 """

@@ -123,8 +123,11 @@ def _instruction_score(line: Dict[str, Any]) -> float:
     score = 2.0 * len(_INSTRUCTION_TERMS.findall(text))
     if _DIRECTOR_WORD.search(text):
         score += 1.0
-    # Handwriting read by a printed-text recogniser usually scores lower.
-    if line.get("confidence", 1.0) < 0.9:
+    # A line counts only with an instruction word or "Director" in it, so
+    # ordinary handwritten pages (notes, handwritten letters) are not taken
+    # for a Director's remark.  Among candidates, a less confidently read
+    # line (typical of hurried handwriting) is preferred.
+    if score > 0 and line.get("confidence", 1.0) < 0.9:
         score += 0.5
     return score
 
@@ -222,10 +225,18 @@ class CDTRSOCRAdapter:
             # Extract standard fields
             extracted = res.extracted_fields
 
-            # Enhance with entities (like PERSON, DEPARTMENT)
+            # Enhance with entities (like PERSON, DEPARTMENT) that the entity
+            # extractor did not already turn into a field (persons,
+            # organizations, dates, ...).
+            try:
+                from extraction.entity_extractor import _LABEL_TO_FIELD
+            except Exception:
+                _LABEL_TO_FIELD = {}
             for ent in res.entities:
                 label = ent.get("label", "")
                 text = ent.get("text", "")
+                if _LABEL_TO_FIELD.get(label.upper()) in extracted:
+                    continue
                 if label and text:
                     # Collect all mentions of people or departments
                     key = label.lower()

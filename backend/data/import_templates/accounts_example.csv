@@ -1,0 +1,8 @@
+username,full_name,role,department,designation,employee_code,email,outlook_email,gov_email,password,contexts
+admin,System Administrator,ADMIN,,System Administrator,,admin@example.gov.in,,,ChangeMe@1,
+ds_office,Director's Secretary,DS,,Director's Secretary,,ds@example.gov.in,,,ChangeMe@1,
+director,The Director,DIRECTOR,,Director,,director@example.gov.in,,,ChangeMe@1,
+tso,Technical Staff Officer,TSO,,TSO,EMP-0001,tso@example.gov.in,,,ChangeMe@1,TSO; EMPLOYEE:FIN
+hod_fin,Meera Iyer,HOD,FIN,Head of Finance,EMP-0002,meera.iyer@example.gov.in,,,ChangeMe@1,HOD:FIN; HOD:SP
+emp_ravi,Ravi Verma,EMPLOYEE,FIN,Accounts Officer,EMP-0003,ravi.verma@example.gov.in,,,ChangeMe@1,
+emp_sita,Sita Rao,EMPLOYEE,HR,Assistant,EMP-0004,sita.rao@example.gov.in,,,ChangeMe@1,

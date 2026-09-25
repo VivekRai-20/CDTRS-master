@@ -46,20 +46,33 @@ scratch/
 frontend/data/cache/
 *.zip
 
-# PaddleOCR model weights & inference cache (trained weights - too large for git)
-# Code files in OCR/fineTune/ ARE tracked (train.py, config.py, etc.)
-OCR/fineTune/models/handwritten_*/
-OCR/fineTune/models/original/*.pdparams
-OCR/fineTune/models/original/*.pdopt
-OCR/fineTune/models/original/*.pdiparams
-OCR/fineTune/models/original/*.pdiparams.info
-OCR/fineTune/models/original/*.pdmodel
-OCR/fineTune/dataset/splits/
+# Model weights.  The small PaddleOCR 2.x models in OCR_new/models/paddleocr/
+# ARE tracked (the OCR must work offline right after cloning); other Paddle
+# weights are not.
 *.pdparams
 *.pdopt
 *.pdiparams
 *.pdiparams.info
 *.pdmodel
+!OCR_new/models/paddleocr/*/inference.pdiparams
+!OCR_new/models/paddleocr/*/inference.pdiparams.info
+!OCR_new/models/paddleocr/*/inference.pdmodel
+
+# Handwriting models (TrOCR, ~250 MB each - too large for git; see
+# OCR_new/fineTune/README.md) and which one is active on this PC.
+OCR_new/models/handwriting/*/
+OCR_new/models/handwriting/active.txt
+# Classifiers trained on this PC's own data
+OCR_new/models/classifiers/*/
+
+# Fine-tuning data and runs (your scans and labels - back them up yourself)
+OCR_new/fineTune/datasets/raw/*
+OCR_new/fineTune/datasets/lines/*
+OCR_new/fineTune/datasets/classification/*
+OCR_new/fineTune/datasets/labels*.csv
+!OCR_new/fineTune/datasets/**/.gitkeep
+OCR_new/fineTune/checkpoints/
+OCR_new/fineTune/evaluation/reports/
 
 # Paddle / inference cache directories
 .paddleocr/
@@ -72,3 +85,13 @@ sample_test_document.txt
 test_finance_audit_dispatch.pdf
 test_hr_recruitment_dispatch.pdf
 test_technical_infrastructure_dispatch.pdf
+
+# Database / document backups (backend/backup_database.py)
+backups/
+
+# Data files for import_from_csv.py (real staff lists)
+backend/data/import/
+
+# Local setup / diagnostics and files saved by the Claude desktop app
+_env_setup/
+Claude outputs/

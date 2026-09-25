@@ -1,0 +1,20 @@
+{
+  "paddleocr_version": "2.8.1",
+  "ocr_version": "PP-OCRv4",
+  "lang": "en",
+  "copied_at": "2026-09-24T22:05:59",
+  "models": {
+    "det": {
+      "name": "en_PP-OCRv3_det_infer",
+      "source_url": "https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar"
+    },
+    "rec": {
+      "name": "en_PP-OCRv4_rec_infer",
+      "source_url": "https://paddleocr.bj.bcebos.com/PP-OCRv4/english/en_PP-OCRv4_rec_infer.tar"
+    },
+    "cls": {
+      "name": "ch_ppocr_mobile_v2.0_cls_infer",
+      "source_url": "https://paddleocr.bj.bcebos.com/dygraph_v2.0/ch/ch_ppocr_mobile_v2.0_cls_infer.tar"
+    }
+  }
+}

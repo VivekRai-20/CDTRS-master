@@ -1,0 +1,9 @@
+# Settings for:  python fineTune/training/train.py --task classification
+# (optional document categories; documents go in
+#  fineTune/datasets/classification/<CATEGORY>/)
+
+min_documents_per_category: 5
+max_features: 5000         # vocabulary size
+ngram_max: 2               # 1 = single words, 2 = also word pairs
+test_size: 0.2             # share of documents held back to report accuracy
+seed: 42

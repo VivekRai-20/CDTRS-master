@@ -60,7 +60,7 @@ def parse_excel_or_csv(file_path: str) -> List[Dict[str, Any]]:
                         'default_password': str(row_dict.get('password') or 'cdtrs@emp').strip(),
                     })
             except ImportError:
-                print('[ERROR] Please install pandas or openpyxl (pip install openpyxl pandas) to read Excel files.')
+                print('[ERROR] Reading Excel files needs pandas or openpyxl (both are pinned in requirements.txt).')
                 return []
 
     elif ext == '.csv':

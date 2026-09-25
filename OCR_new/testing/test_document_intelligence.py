@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-import pytest
+import unittest
 
 from document_intelligence import DocumentProcessor, DocumentResult
 
 
-class TestDocumentResult:
+class TestDocumentResult(unittest.TestCase):
     """Test suite for DocumentResult structure and serialization."""
 
     def test_convenience_properties(self):
@@ -80,7 +80,7 @@ class TestDocumentResult:
             assert "Some extracted text" in content
 
 
-class TestDocumentProcessor:
+class TestDocumentProcessor(unittest.TestCase):
     """Test suite for DocumentProcessor initialization."""
 
     def test_init_with_default_config(self):
@@ -96,5 +96,5 @@ class TestDocumentProcessor:
 
     def test_missing_file_raises_filenotfound(self):
         processor = DocumentProcessor()
-        with pytest.raises(FileNotFoundError):
+        with self.assertRaises(FileNotFoundError):
             processor.process("non_existent_file_12345.pdf")

@@ -6,34 +6,52 @@ Purpose:
 
 This test file intentionally does NOT modify production code.
 
-Run:
-    pytest -q backend/tests/test_context_audit.py
+Run (the backend must be running and seeded), from backend/:
+    python tests/test_context_audit.py
 
-Or from backend/:
-    pytest -q tests/test_context_audit.py
+Environment (optional):
+    CDTRS_API_URL=http://127.0.0.1:8123      (default; /api/v1 suffix allowed)
 
-Optional:
-    pytest -v tests/test_context_audit.py
-
-Environment:
-    CDTRS_API_URL=http://127.0.0.1:8000
+Uses only the standard library and requests (pytest is not in imp.txt); the
+small runner at the end of this file provides the two features it needs:
+module-level fixtures and parametrised tests.
 """
 
+import inspect
 import os
-from typing import Any, Dict, List, Optional
+import sys
+import traceback
+from typing import Any, Callable, Dict, List, Optional
 
-import pytest
 import requests
+
+
+def fixture(fn: Callable) -> Callable:
+    """Marks a function whose result is shared by the tests that name it as an argument."""
+    fn._is_fixture = True
+    return fn
+
+
+def parametrize(arg: str, values: List[Any]) -> Callable:
+    """Runs the test once per value of *arg*."""
+    def decorate(fn: Callable) -> Callable:
+        fn._params = (arg, list(values))
+        return fn
+    return decorate
 
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
+# The test server (python run_server.py --port 8123 --host 127.0.0.1 --no-mail).
+# CDTRS_API_URL may be given with or without the /api/v1 suffix.
 BASE_URL = os.getenv(
     "CDTRS_API_URL",
-    "http://127.0.0.1:8000",
+    "http://127.0.0.1:8123",
 ).rstrip("/")
+if BASE_URL.endswith("/api/v1"):
+    BASE_URL = BASE_URL[: -len("/api/v1")]
 
 API = f"{BASE_URL}/api/v1"
 
@@ -320,7 +338,7 @@ def test_backend_health():
 # RAHUL - MULTI CONTEXT
 # ============================================================
 
-@pytest.fixture(scope="module")
+@fixture
 def rahul_session():
     data = login(
         USERS["rahul"]["username"],
@@ -512,7 +530,7 @@ def test_unknown_context_header_is_rejected(rahul_session):
 # TSO + EMPLOYEE DUAL CONTEXT
 # ============================================================
 
-@pytest.fixture(scope="module")
+@fixture
 def tso_session():
     data = login(
         USERS["tso"]["username"],
@@ -587,7 +605,7 @@ def test_tso_can_switch_between_contexts(tso_session):
 # HOD MULTI-DEPARTMENT CONTEXT
 # ============================================================
 
-@pytest.fixture(scope="module")
+@fixture
 def hod_session():
     data = login(
         USERS["hod"]["username"],
@@ -647,7 +665,7 @@ def test_hod_multiple_contexts_if_seeded(hod_session):
 # BASIC ROLE LOGIN TESTS
 # ============================================================
 
-@pytest.mark.parametrize(
+@parametrize(
     "user_key",
     [
         "ds",
@@ -783,3 +801,43 @@ def test_context_structure_summary(
     print("\n" + "=" * 60)
     print("Context structure audit completed.")
     print("=" * 60)
+
+
+# ============================================================
+# RUNNER
+# ============================================================
+
+def run_all() -> int:
+    namespace = globals()
+    cache: Dict[str, Any] = {}
+
+    def resolve(name: str) -> Any:
+        if name not in cache:
+            cache[name] = namespace[name]()
+        return cache[name]
+
+    passed = failed = 0
+    for name, fn in list(namespace.items()):
+        if not name.startswith("test_") or not callable(fn):
+            continue
+        arg, values = getattr(fn, "_params", (None, [None]))
+        for value in values:
+            label = f"{name}[{value}]" if arg else name
+            try:
+                kwargs = {arg: value} if arg else {}
+                for param in inspect.signature(fn).parameters:
+                    if param not in kwargs:
+                        kwargs[param] = resolve(param)
+                fn(**kwargs)
+                passed += 1
+                print(f"ok    {label}")
+            except Exception:
+                failed += 1
+                print(f"FAIL  {label}")
+                traceback.print_exc()
+    print(f"\n{passed} passed, {failed} failed")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(run_all())

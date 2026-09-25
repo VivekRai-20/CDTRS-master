@@ -207,6 +207,10 @@ class Department(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), unique=True, nullable=False)
     code = Column(String(20), unique=True, nullable=True)
+    # What the department handles, in plain words, and the words / phrases that
+    # identify its documents.  Both are used by the routing suggestion.
+    description = Column(Text, nullable=True)
+    keywords = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.now)
 
@@ -857,7 +861,7 @@ class DocumentOCR(Base):
     document_id = Column(Integer, ForeignKey("documents.doc_id"), unique=True, nullable=False)
     extracted_text = Column(Text, nullable=True)
     ocr_status = Column(SAEnum(OCRStatus, name="ocr_record_status_enum"), default=OCRStatus.PENDING, nullable=False)
-    ocr_engine = Column(String(100), default="Tesseract-v5/PaddleOCR", nullable=False)
+    ocr_engine = Column(String(100), default="PaddleOCR", nullable=False)
     confidence = Column(Float, nullable=True)
     processed_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)

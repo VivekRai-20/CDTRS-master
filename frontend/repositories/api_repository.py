@@ -571,8 +571,17 @@ class APIRepository(BaseRepository):
         data = self.client.get(Endpoints.ADMIN_DEPARTMENTS) or []
         return [DepartmentModel.from_dict(d) for d in data]
 
-    def admin_create_department(self, name: str, code: Optional[str] = None) -> Optional[DepartmentModel]:
-        data = self.client.post(Endpoints.ADMIN_DEPARTMENTS, json={"name": name, "code": code})
+    def admin_create_department(
+        self,
+        name: str,
+        code: Optional[str] = None,
+        description: Optional[str] = None,
+        keywords: Optional[str] = None,
+    ) -> Optional[DepartmentModel]:
+        data = self.client.post(
+            Endpoints.ADMIN_DEPARTMENTS,
+            json={"name": name, "code": code, "description": description, "keywords": keywords},
+        )
         return DepartmentModel.from_dict(data) if data else None
 
     def admin_update_department(self, dept_id: int, payload: Dict[str, Any]) -> Optional[DepartmentModel]:

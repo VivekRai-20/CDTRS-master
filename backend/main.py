@@ -22,6 +22,19 @@ warnings.filterwarnings(
     "ignore", message=r"urllib3 \(.*\) or chardet \(.*\)/charset_normalizer \(.*\) doesn't match a supported version"
 )
 
+# Windows: pyarrow must be loaded before PaddleOCR and the other native
+# libraries.  When it is first imported later (sentence-transformers imports it
+# while the OCR engine warms up), its DLL start-up crashes the whole server
+# process with an access violation about 45 s after start: the backend then
+# disappears without an error and the desktop app reports "WebSocket error:
+# The remote host closed the connection".  Loading it here, first, avoids that.
+try:
+    import pyarrow  # noqa: F401
+    import pyarrow.dataset  # noqa: F401
+    import pandas  # noqa: F401
+except Exception:
+    pass
+
 import asyncio
 import json
 import os
@@ -127,12 +140,11 @@ def _parse_priority(value: Optional[str]) -> Priority:
 
 
 def _store_upload(doc_id: int, filename: str, contents: bytes) -> str:
+    """Store an uploaded file under uploads/<year>/<doc_id>/.  A file with the
+    same name is kept as name_1.ext, name_2.ext, ... (never overwritten)."""
     dest_dir = UPLOAD_DIR / str(datetime.utcnow().year) / str(doc_id)
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = dest_dir / Path(filename).name
-    with open(dest_path, "wb") as f:
-        f.write(contents)
-    return str(dest_path.relative_to(UPLOAD_DIR))
+    dest_path = crud.save_file_unique(dest_dir, filename, contents)
+    return dest_path.relative_to(UPLOAD_DIR).as_posix()
 
 
 def _validate_upload(file: UploadFile, contents: bytes) -> None:
@@ -237,9 +249,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS_ORIGINS in backend/.env: "*" (default) or a comma-separated list such as
+# "http://192.168.1.20:8000,http://cdtrs-server:8000".  The desktop client does
+# not need CORS; it matters only for browser-based clients.
+_cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()] or ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -552,6 +568,20 @@ async def manual_upload(
     contents = await file.read()
     _validate_upload(file, contents)
 
+    # The same scanned letter registered twice would create two workflows.
+    duplicate = crud.find_duplicate_attachment(
+        db, crud.compute_checksum(contents), attachment_type=AttachmentType.ORIGINAL
+    )
+    if duplicate is not None and duplicate.document is not None:
+        existing = duplicate.document
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"This file is already registered as document {existing.reference_no} "
+                f"(\"{existing.title}\"). Open that document instead of registering it again."
+            ),
+        )
+
     dept_hint = int(suggested_department_id) if (suggested_department_id or "").strip().isdigit() else None
     emp_hint = int(suggested_employee_id) if (suggested_employee_id or "").strip().isdigit() else None
     parsed_conf = None
@@ -682,7 +712,10 @@ async def process_intake(
 ):
     if not ctx or ctx.context_type != WorkContextType.DS:
         raise HTTPException(status_code=403, detail="Only the DS can process intake.")
-    doc = crud.process_intake_to_document(db, message_id, payload, current_user, ctx.id)
+    try:
+        doc = crud.process_intake_to_document(db, message_id, payload, current_user, ctx.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if not doc:
         raise HTTPException(status_code=404, detail="Intake item not found.")
     await run_in_threadpool(intelligence.trigger_ocr_processing, db, doc.doc_id)
@@ -1258,6 +1291,12 @@ async def add_progress_with_attachment(
 ):
     """Progress plus a supporting document in one step, so the file stays tied
     to the update it belongs to."""
+    contents = b""
+    if file is not None and file.filename:
+        # Check the file first: a rejected file must not leave a progress
+        # update (and its notification) behind.
+        contents = await file.read()
+        _validate_upload(file, contents)
     try:
         update = workflow.submit_progress(
             db, work_item_id=work_item_id, description=description,
@@ -1268,8 +1307,6 @@ async def add_progress_with_attachment(
         raise _handle(exc)
 
     if file is not None and file.filename:
-        contents = await file.read()
-        _validate_upload(file, contents)
         crud.create_attachment(
             db=db,
             doc_id=update.document_id,
@@ -1382,8 +1419,27 @@ async def upload_attachment(
     ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
 ):
     _authorized_document(db, document_id, current_user, ctx)
+    try:
+        kind = AttachmentType(str(attachment_type or "").strip().upper())
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"attachment_type must be one of {', '.join(t.value for t in AttachmentType)}.",
+        )
+    if kind == AttachmentType.ORIGINAL and (not ctx or ctx.context_type != WorkContextType.DS):
+        raise HTTPException(status_code=403, detail="Only the DS can add the original document.")
+    if progress_update_id is not None:
+        update = db.query(models.ProgressUpdate).filter(models.ProgressUpdate.id == progress_update_id).first()
+        if update is None or update.document_id != document_id:
+            raise HTTPException(status_code=422, detail="progress_update_id does not belong to this document.")
     contents = await file.read()
     _validate_upload(file, contents)
+    duplicate = crud.find_duplicate_attachment(db, crud.compute_checksum(contents), document_id=document_id)
+    if duplicate is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This file is already attached to this document as \"{duplicate.file_name}\".",
+        )
     att = crud.create_attachment(
         db=db,
         doc_id=document_id,
@@ -1394,7 +1450,7 @@ async def upload_attachment(
         file_type=file.content_type,
         file_size=len(contents),
         checksum=crud.compute_checksum(contents),
-        attachment_type=AttachmentType(attachment_type),
+        attachment_type=kind,
         context_id=_context_id(ctx),
     )
     await crud.event_manager.broadcast(
@@ -1415,6 +1471,9 @@ def download_attachment(
         raise HTTPException(status_code=404, detail="Attachment not found.")
     if att.document_id:
         _authorized_document(db, att.document_id, current_user, ctx)
+    elif not ctx or ctx.context_type not in (WorkContextType.DS, WorkContextType.ADMIN):
+        # Mailbox attachments not yet registered as a document: DS intake only.
+        raise HTTPException(status_code=403, detail="Only the DS can open unregistered intake attachments.")
 
     for base in (UPLOAD_DIR, Path(__file__).parent / "uploads", _PROJECT_ROOT / "uploads"):
         candidate = Path(base) / att.storage_key

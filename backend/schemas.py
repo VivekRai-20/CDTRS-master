@@ -35,12 +35,16 @@ from models import (
 class DepartmentCreate(BaseModel):
     name: str
     code: Optional[str] = None
+    description: Optional[str] = None
+    keywords: Optional[str] = None
 
 
 class DepartmentResponse(BaseModel):
     id: int
     name: str
     code: Optional[str] = None
+    description: Optional[str] = None
+    keywords: Optional[str] = None
     is_active: bool = True
 
     model_config = ConfigDict(from_attributes=True)

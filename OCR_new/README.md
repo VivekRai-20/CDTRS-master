@@ -1,2168 +1,756 @@
-# Offline OCR & Document Intelligence Engine
+# OCR_new: Offline OCR and Document Intelligence Engine
 
-A modular, reusable, and **100% offline OCR and Document Intelligence Engine** designed to process real-world documents containing **printed text, digitally generated text, scanned text, handwritten text, and mixed handwritten + printed content**.
+OCR_new reads scanned letters, forms, PDFs and photos, including pages with
+handwritten notes, and turns them into structured results: the text of every line
+with its position and confidence, whether each line is printed or handwritten, a
+document category, named entities (people, dates, amounts, ...), regex fields and
+semantic information.
 
-The system is designed to function independently as a complete document-processing application while also being reusable as a **standalone Python module, SDK, or local service** inside other applications.
+It runs **fully offline**. All models are stored on the PC, and nothing is
+downloaded while documents are processed.
 
-The goal is not only to extract text, but to understand the **content, structure, text type, semantic meaning, document category, and important information** present in a document.
+The engine has two uses:
 
-The system also provides a dedicated **offline fine-tuning framework** so that OCR, handwriting recognition, text-type detection, classification, and other components can be improved using locally collected and annotated data.
+- **Inside CDTRS.** The backend calls it through `backend/ocr_adapter.py` and
+  `backend/intelligence.py` (section 2).
+- **Standalone.** You can use it through the command line (`main.py`), the Python
+  API (`DocumentProcessor`) or a local REST API (`api/app.py`) (section 4).
 
----
+Contents
 
-## Quick Start: Independent Usage & Application Integration
-
-### 1. How to Run the OCR Independently (CLI)
-
-The engine can run standalone directly from your terminal with zero external dependencies or internet connection:
-
-#### Check Offline Readiness
-```bash
-python main.py --mode check-offline
-```
-
-#### Run the Complete Pipeline (OCR + Layout + Text-Type + Extraction + Classification)
-```bash
-python main.py --mode full --input input/document.pdf
-```
-*Outputs generated in `output/<filename>/`:*
-- `result.json` — Consolidated standardized JSON summary
-- `ocr.txt` — Plain extracted text
-- `ocr.json` — Per-region text, bounding boxes, and confidence
-- `layout.json` — Layout regions and logical reading order
-- `text_types.json` — Handwritten vs. printed classification
-- `entities.json` — Named entities (Dates, Names, Phone numbers, etc.)
-- `extracted.json` — Structured key-value fields
-- `classification.json` — Document category and confidence
-- `semantic.json` — Semantic categories and top keywords
-
-#### Run Specific Modular Modes
-```bash
-# OCR text & bounding boxes only:
-python main.py --mode ocr --input input/document.pdf
-
-# Semantic analysis & keyword extraction:
-python main.py --mode understand --input input/document.pdf
-
-# Document classification only:
-python main.py --mode classify --input input/document.pdf
-
-# Entity and structured field extraction:
-python main.py --mode extract --input input/document.pdf
-```
+1. What it does
+2. How CDTRS uses it
+3. Installation and models
+4. Running it standalone
+5. Configuration reference (`config/config.yaml`)
+6. Printed/handwritten detection and handwriting recognition
+7. Improving accuracy (fine-tuning)
+8. Tests
+9. Folder structure
+10. Troubleshooting
 
 ---
 
-### 2. How to Use the OCR in Different Applications
+## 1. What it does
 
-The engine is completely application-agnostic and can be integrated into external Python code, backend servers, or microservices:
+### 1.1 Pipeline
 
-#### Option A: High-Level Python SDK (`document_intelligence`)
-Use the clean, object-oriented SDK inside your Python application:
+`DocumentProcessor.process()` in `document_intelligence.py` runs these steps in this
+order. Square brackets show the modes that run a step. CDTRS always uses `full`.
 
-```python
-from document_intelligence import DocumentProcessor
-
-# Initialize the offline processor
-processor = DocumentProcessor()
-
-# Process any supported document (PDF, PNG, JPG, TIFF, DOCX)
-result = processor.process("input/document.pdf")
-
-# Access structured document intelligence
-print("Document Type   :", result.document_type)
-print("Extracted Text  :", result.text)
-print("Named Entities  :", result.entities)
-print("Extracted Fields:", result.extracted_fields)
-print("Classification  :", result.classification)
-print("Regions Found   :", len(result.regions))
-
-# Export to standardized dictionary or save all result files
-data_dict = result.to_dict()
-result.save(output_dir="output/")
+```
+input file (PDF, image, multi-page TIFF, DOCX, TXT)
+  |
+  v
+1. Load              document/            detect the file type; render PDF pages at 300 DPI;
+  |                                       read image frames; read DOCX text and embedded images
+  v
+2. Preprocess        preprocessing/       optional clean-up of each page (every step is off by default)
+  |
+  v
+3. PaddleOCR         ocr/paddle_engine.py find the text lines -> turn upside-down lines round
+  |                                       -> read each line; drop lines below drop_score;
+  |                                       sort top-to-bottom, left-to-right
+  v
+4. Layout            layout/              page regions (HEADER, TITLE, PARAGRAPH, ...)        [full]
+  |                                       from the page image; does not change the OCR text
+  v
+5. Printed or        ocr/text_type_detector.py
+   handwritten                            PRINTED / HANDWRITTEN / UNKNOWN for every line      [full]
+  |
+  v
+6. TrOCR re-read     ocr/handwriting_engine.py
+  |                                       handwritten (and unsure) lines are read again; the
+  |                                       TrOCR reading replaces PaddleOCR's when it is more
+  |                                       confident                                           [full]
+  v
+7. Classification    classification/      keyword rules, or your trained classifier   [classify, full]
+  |
+  v
+8. Extraction        nlp/, extraction/    spaCy entities + regex entities + regex fields
+  |                                       from extraction/patterns.yaml                [extract, full]
+  v
+9. Semantic          semantic/            sentence embedding, TF-IDF keywords, semantic category,
+  |                                       similarity to reference texts            [understand, full]
+  v
+DocumentResult  ->  (optional) output/<file name>/result.json, ocr.txt, ...
 ```
 
-#### Option B: Low-Level OCR Engine Integration (`ocr`)
-If your application only requires OCR text and bounding boxes without high-level intelligence:
+Steps 1 to 3 always run. In step 7, a trained classifier
+(`models/classifiers/document/`) replaces the keyword-rule result when it is at least
+`classification.min_model_confidence` (0.6) sure and at least as sure as the rules.
+If the category is still UNKNOWN (or step 7 did not run), step 9 uses its semantic
+category instead.
+
+### 1.2 Supported input
+
+| Type | Extensions | How it is read |
+|---|---|---|
+| PDF | `.pdf` | Every page is rendered to an image (`pdf.dpi`, 300) and OCR'd, including digital PDFs; a PDF's text layer is not used. Renderers in order: pypdfium2, then PyMuPDF (also used when a page renders blank), then pdf2image/Poppler |
+| Images | `.png .jpg .jpeg .tif .tiff .bmp .webp` | Each TIFF frame is one page |
+| Word | `.docx` | Paragraph text is taken as it is (confidence 1.0, `"source": "native_text"`). Embedded images are OCR'd as extra pages numbered 1001, 1002, ... |
+| Text | `.txt` | Each line becomes a region (`"source": "plain_text"`) |
+
+A file without a known extension is recognised by its first bytes (PDF, ZIP/DOCX,
+JPEG, PNG, TIFF) or its MIME type.
+
+### 1.3 Main components and versions
+
+| Job | Component |
+|---|---|
+| Text detection and reading | PaddleOCR 2.8.1 on paddlepaddle 2.6.2 (CPU). Models: en_PP-OCRv3_det, en_PP-OCRv4_rec, ch_ppocr_mobile_v2.0_cls |
+| Printed/handwritten | 20 line-shape features, built-in logistic model, or a classifier you trained |
+| Handwriting reading | Microsoft TrOCR `trocr-small-handwritten` through transformers 5.15.0 and torch 2.13.0 (CPU) |
+| Entities | spaCy 3.8.14 with `en_core_web_sm` 3.8.0, plus regex patterns |
+| Embeddings | sentence-transformers 5.6.1 with `all-MiniLM-L6-v2` (384 numbers per text) |
+| Keywords, trained classifiers | scikit-learn 1.9.0 (TF-IDF, Logistic Regression, Random Forest) |
+| Page orientation | OpenCV heuristic (`preprocessing.auto_rotate`, off by default); upside-down lines are handled by PaddleOCR's line classifier |
+
+---
+
+## 2. How CDTRS uses it
+
+- **One shared engine.** `backend/ocr_adapter.py` puts `OCR_new` on `sys.path` and
+  creates one `DocumentProcessor`, which reads `OCR_new/config/config.yaml` once. It
+  always calls `process(file, mode="full")`. The backend receives the text, the
+  average line confidence, the extracted fields, the page count, the file type and
+  `is_handwritten`, which is true when more lines are HANDWRITTEN than PRINTED. The
+  adapter also looks through the HANDWRITTEN lines for a Director instruction and
+  stores it as the fields `director_handwritten_remark` and
+  `prior_director_review_detected`.
+- **Text without OCR.** `extract_text_fields(text)` runs only the entity and regex
+  extraction, for example on e-mail bodies or on text the desktop intake already
+  read. `rank_references(text, references)` uses the embedding model for the
+  department suggestions in `backend/intelligence.py`.
+- **Background OCR.** The backend runs OCR in a worker thread
+  (`run_in_threadpool`), so the server keeps answering other requests while a
+  document is read. Calls into the engine share a lock, so documents are OCR'd one
+  at a time. OCR is advisory: when it fails, the error is recorded on the OCR record
+  and the document is still registered.
+- **Warm-up.** When the backend starts, the thread `ocr-warm-up`
+  (`intelligence.warm_up_ocr_engine` -> `ocr_adapter.warm_up()`) loads PaddleOCR, the
+  NER and regex extraction and the embedding model. The first OCR is ready about
+  20 to 60 seconds after start. The TrOCR handwriting model is loaded during the
+  first document.
+- **Missing models.** When the PaddleOCR models are missing, OCR_new stops with
+  `SystemExit`. The adapter catches this and reports "Run 'python
+  OCR_new/setup_models.py' once to install them".
+- **Changes need a restart.** After you edit `config.yaml`, switch the handwriting
+  model or train a classifier, restart the backend (`start_backend.bat`).
+- **Windows DLL order.** On Windows, torch must be loaded before PaddlePaddle, and
+  pyarrow/pandas before PaddleOCR. Without this, the backend crashed without an
+  error message and the desktop app reported "WebSocket ... remote host closed the
+  connection". The code handles the order: `backend/ocr_adapter.py` imports torch
+  first, `backend/main.py` imports pyarrow and pandas first, and
+  `document_intelligence.py` calls `utils/native_libs.preload()` (torch, pyarrow,
+  pandas; Windows only). In your own scripts, import `document_intelligence` before
+  anything that imports `paddleocr`.
+
+---
+
+## 3. Installation and models
+
+### 3.1 Python and packages
+
+On the CDTRS PC, Python 3.12 (64-bit) is installed per user at
+`%LOCALAPPDATA%\Programs\Python\Python312\python.exe`, and all the packages from
+`imp.txt` are already installed. **No extra installation is needed.** Use only these
+packages. `OCR_new/requirements.txt` pins the same versions as `imp.txt`.
+
+| Package | Version | Used for |
+|---|---|---|
+| paddlepaddle / paddleocr | 2.6.2 / 2.8.1 | Text detection and reading |
+| torch / torchvision | 2.13.0 / 0.28.0 | TrOCR |
+| transformers / sentencepiece | 5.15.0 / 0.2.2 | TrOCR model and tokenizer |
+| huggingface_hub | 1.27.0 | One-time TrOCR download only |
+| sentence-transformers | 5.6.1 | Embeddings |
+| spacy / en_core_web_sm | 3.8.14 / 3.8.0 | Named entities (`en_core_web_sm` comes from `imp.txt`; it is not in `requirements.txt`) |
+| scikit-learn | 1.9.0 | TF-IDF keywords, trained classifiers |
+| opencv-python / Pillow / numpy | 4.10.0.84 / 10.4.0 / 1.26.4 | Images |
+| pypdfium2 / PyMuPDF / pdf2image | 4.30.0 / 1.24.9 / 1.17.0 | PDF rendering |
+| python-docx | 1.2.0 | DOCX |
+| python-dateutil | 2.9.0.post0 | Date normalisation of entities |
+| PyYAML | 6.0.2 | Configuration |
+| fastapi / uvicorn / pydantic | 0.111.0 / 0.30.1 / 2.8.2 | Local REST API |
+| editdistance, PySide6 | 0.8.0, 6.7.2 | Fine-tuning (error rates, label tool) |
+
+To set up another PC, install the same versions (`python -m pip install -r
+requirements.txt` from `OCR_new`, which needs internet). Paddle supports Python up to
+3.12.
+
+### 3.2 Models
+
+| Model | Folder | Size | In git | What to do |
+|---|---|---|---|---|
+| PaddleOCR detection / recognition / line orientation | `models\paddleocr\det`, `rec`, `cls` (+ `model_info.json`) | about 16 MB | yes | Nothing. Check them with `python setup_models.py --check` |
+| TrOCR handwriting | `models\handwriting\trocr-small-handwritten\` + `models\handwriting\active.txt` | about 250 MB | no | Download it once: `python fineTune\download_base_model.py` |
+| spaCy `en_core_web_sm` | installed Python package | - | - | Nothing (from `imp.txt`) |
+| Sentence embeddings `all-MiniLM-L6-v2` | `models\embeddings\model\` | about 90 MB | yes | Nothing |
+| Your own classifiers (optional) | `models\classifiers\text_type\`, `models\classifiers\document\` | small | no | Made by fine-tuning (section 7) |
+| Your own spaCy model (optional) | `models\ner\<folder with meta.json>\` | - | no | Only if you have one |
+
+Run these commands from the `OCR_new` folder (`cd /d C:\CDTRS-main\OCR_new`):
+
+| Command | What it does |
+|---|---|
+| `python setup_models.py --check` | Shows `[OK]` or `[MISSING]` for DET, REC and CLS |
+| `python setup_models.py` | Copies the models again from PaddleOCR's cache (`~\.paddleocr\whl`) |
+| `python fineTune\download_base_model.py` | Downloads the TrOCR base model once (needs internet) and makes it active |
+| `python fineTune\set_active_model.py` | Lists the handwriting models; `*` marks the active one |
+| `python main.py --mode check-offline` | Checks the offline flag, the PaddleOCR models and the patterns file |
+
+- `setup_models.py` without `--check` downloads the PaddleOCR models into
+  `~\.paddleocr\whl` first, but only if they are not already there (internet is
+  needed only then). It refuses PaddleOCR 3.x.
+- `download_base_model.py` has two options: `--model small|base|large` (`small` is
+  the default and the recommended model) and `--no-activate`. If the PC has no
+  internet, run it on another PC and copy the `models\handwriting\` folder across.
+- Without an active handwriting model, handwritten lines keep PaddleOCR's reading.
+  Nothing else breaks.
+- `check-offline` does not check the handwriting, NER or embedding models.
+- If `python` is not recognised, use `py -3.12` instead.
+
+---
+
+## 4. Running it standalone
+
+### 4.1 Command line (`main.py`)
+
+```
+cd /d C:\CDTRS-main\OCR_new
+python main.py --mode full --input input\test_doc.png
+python main.py --mode full --input "C:\scans\letter from HQ.pdf"
+```
+
+| Option | Meaning |
+|---|---|
+| `--mode` (required) | `ocr`, `understand`, `classify`, `extract`, `full`, `patterns` or `check-offline` |
+| `--input FILE`, `-i FILE` | The file to process. Required for `ocr`, `understand`, `classify`, `extract` and `full`; optional for `patterns`. A relative path is taken relative to the `OCR_new` folder, not the current folder |
+| `--config PATH` | Use another configuration file instead of `config\config.yaml`. A relative `PATH` is taken from the current folder. Relative paths inside the file are still relative to `OCR_new` |
+
+What each mode does:
+
+| Mode | Steps (section 1.1) | Files written to `output\<file name>\` |
+|---|---|---|
+| `ocr` | 1-3 only, through `OCRPipeline` (no printed/handwritten labels, no TrOCR) | `ocr.txt`, `ocr.json` |
+| `understand` | 1-3, 9. The semantic category also becomes the classification | all nine files (see 4.2) |
+| `classify` | 1-3, 7 | all nine files |
+| `extract` | 1-3, 8 | all nine files |
+| `full` | 1-9 | all nine files |
+| `patterns` | Only the regex fields of `extraction\patterns.yaml`, on a text file (`--input notes.txt`) or on pasted text (end with an empty line, then Ctrl+Z and Enter) | `extracted.json` (only with `--input`) |
+| `check-offline` | Reports `[1] Offline mode flag`, `[2] PaddleOCR model dirs`, `[3] Patterns YAML file`; exit code 1 if something is missing | none |
+
+The console shows a summary: pages, number of regions, elapsed time, and the
+fields and entities found. Every run is a new Python process, so the models are
+loaded again each time. To process many files, use the Python API with one
+`DocumentProcessor`.
+
+### 4.2 Output files
+
+The results go to `OCR_new\output\<input file name without extension>\`. A second
+run on a file with the same name overwrites them. The modes `understand`,
+`classify`, `extract` and `full` (and `DocumentResult.save()`) write:
+
+| File | Contents |
+|---|---|
+| `result.json` | Everything: `document` (filename, pages, source_type), `classification`, `regions`, `layout`, `text_types`, `entities`, `extracted_fields`, `semantic`, `full_text`, `text`, `ocr`, `metadata` (mode, elapsed_s, region_count, pages_processed) |
+| `ocr.txt` | The full text. Regions on one line are joined with spaces, and lines with line breaks |
+| `ocr.json` | `{"text", "full_text", "regions"}` |
+| `layout.json` | `{"regions": [...]}` with region_id, page, bbox, region_type, confidence, reading_order (`full` only, otherwise `{}`) |
+| `text_types.json` | For each line: page, first 40 characters, text_type, confidence, recognizer (`paddleocr` or `handwriting`) (`full` only, otherwise `[]`) |
+| `entities.json` | For each entity: text, label, start, end, confidence, normalized_text |
+| `extracted.json` | The `extracted_fields` (see below) |
+| `classification.json` | label and confidence, plus `method` (RuleClassifier or ModelClassifier) or, when the semantic step set it, `categories` (every category with its similarity) |
+| `semantic.json` | enabled, embedding (384 numbers), keywords (top 10 with score), classification, similarities |
+
+In `ocr` mode, `ocr.json` holds `file`, `doc_type`, `pages`, `elapsed_s`,
+`processed_at` and `regions`, and the regions have no text type.
+
+One region (line) in `full` mode:
+
+```json
+{
+  "text": "Please put up the file",
+  "confidence": 0.8123,
+  "bbox": [412, 1630, 1210, 1702],
+  "page": 1,
+  "text_type": "HANDWRITTEN",
+  "text_type_confidence": 0.91,
+  "handwriting_text": "Please put up the file",
+  "handwriting_confidence": 0.8123,
+  "paddle_text": "Plese put vp the fle",
+  "paddle_confidence": 0.61,
+  "recognizer": "handwriting"
+}
+```
+
+`bbox` is `[x1, y1, x2, y2]` in pixels of the page image (a PDF page rendered at
+`pdf.dpi`). The fields `handwriting_*` appear on lines that TrOCR read again.
+`paddle_*` and `recognizer` appear only when TrOCR's reading replaced PaddleOCR's.
+
+`extracted_fields` combines two sources:
+
+- **Entity lists:** `persons`, `organizations`, `locations`, `dates`, `times`,
+  `amounts`, `emails`, `phone_numbers`, `document_ids`, `reference_numbers`.
+  These come from spaCy labels PERSON, ORG, GPE, LOC, DATE, TIME and MONEY, after an
+  implausibility filter, and from regex entities EMAIL, PHONE, DATE, MONEY,
+  REFERENCE_NUMBER and DOCUMENT_ID.
+- **Regex fields from `extraction\patterns.yaml`:** `subject`, `title`, `name`,
+  `roll_no`, `date`, `semester`, `department`, `marks`, `teacher`, `aim`,
+  `experiment_no`. The first matching pattern wins, and a field whose name is
+  already present is not overwritten.
+
+### 4.3 Python API (`DocumentProcessor`)
 
 ```python
+import sys
+sys.path.insert(0, r"C:\CDTRS-main\OCR_new")   # not needed when the script runs in OCR_new
+
+from document_intelligence import DocumentProcessor   # import this before paddleocr (Windows DLL order)
+
+processor = DocumentProcessor()          # reads OCR_new\config\config.yaml
+# DocumentProcessor(config={...}) or DocumentProcessor(config_path="...") also work
+
+result = processor.process(r"C:\scans\letter.pdf", mode="full")   # ocr|understand|classify|extract|full
+
+print(result.document_type)      # classification label, or the file type when there is none
+print(result.text)               # same as result.full_text
+print(result.pages, result.source_type)
+for r in result.regions:
+    print(r["page"], r.get("text_type"), r["confidence"], r["text"])
+print(result.entities)
+print(result.extracted_fields)
+print(result.classification)     # {"label": ..., "confidence": ..., ...}
+
+data = result.to_dict()          # same structure as result.json
+written = result.save()          # OCR_new\output\letter\...; save(output_dir="D:\\results") for another folder
+```
+
+- Models load the first time they are needed and are then reused. Create one
+  `DocumentProcessor` and use it for every file.
+- `process()` raises `FileNotFoundError` for a missing file. When the PaddleOCR
+  models are missing, it raises `SystemExit`, so catch it in a long-running program
+  (as the CDTRS adapter does).
+- The processor is not thread-safe. Serialise calls, for example with a lock.
+- Semantic similarity: `processor.process(path, mode="understand",
+  reference_texts=["...", "..."])` fills `result.semantic["similarities"]` with
+  `{"reference": <first 80 characters>, "similarity": <cosine>}`.
+
+OCR only, without the rest of the pipeline (run from `OCR_new`):
+
+```python
+import yaml
 from ocr.paddle_engine import PaddleEngine
 from ocr.ocr_pipeline import OCRPipeline
 
-# Initialize OCR engine
+config = yaml.safe_load(open("config/config.yaml", encoding="utf-8"))
 engine = PaddleEngine()
-engine.initialize({})
-
-# Process document
-pipeline = OCRPipeline(engine, config={})
-ocr_result = pipeline.process("input/document.pdf")
-
-for region in ocr_result["regions"]:
-    print(f"[{region['confidence']:.2f}] (Page {region['page']}) {region['text']} -> {region['bbox']}")
+engine.initialize(config)
+out = OCRPipeline(engine, config).process("input/test_doc.png")
+# out: file, doc_type, pages, regions, full_text, elapsed_s
 ```
 
-#### Option C: Local Microservice REST API (For Non-Python Applications)
-For Node.js, Go, Java, C#, or web applications, run the local FastAPI service on `localhost`:
+### 4.4 Local REST API (`api/app.py`)
 
-```bash
-uvicorn api.app:app --host 127.0.0.1 --port 8000
+A small FastAPI service lets programs that are not written in Python use the engine.
+Start it from `OCR_new` with uvicorn. **Do not use port 8000 while the CDTRS
+backend is running.** The backend uses that port by default (`PORT` in
+`backend\.env`). Use another port, for example 8010:
+
+```
+cd /d C:\CDTRS-main\OCR_new
+python -m uvicorn api.app:app --host 127.0.0.1 --port 8010
 ```
 
-Send local HTTP requests from any programming language:
-- **Full Pipeline**: `POST http://127.0.0.1:8000/process` with body `{"file_path": "input/document.pdf"}`
-- **OCR Only**: `POST http://127.0.0.1:8000/ocr` with body `{"file_path": "input/document.pdf"}`
-- **Classification**: `POST http://127.0.0.1:8000/classify` with body `{"text": "your document text"}`
-- **Health Check**: `GET http://127.0.0.1:8000/health`
+The API always reads `config\config.yaml`. `/ocr` and `/process` use one shared
+`DocumentProcessor`, which is the same pipeline as the command line and CDTRS
+(including layout, printed/handwritten detection, TrOCR, the trained classifier and
+the patterns.yaml fields). The models load during the first request and are then
+reused.
+
+| Endpoint | Body | Returns |
+|---|---|---|
+| `GET /health` | - | `status` (`READY`, or `DEGRADED` when something is missing), `offline_mode`, `models_available`: `{"paddleocr": true/false, "patterns_file": true/false}` |
+| `POST /process` | `{"file_path": "C:\\scans\\a.pdf", "mode": "full", "config_overrides": {...}}` (`mode` and `config_overrides` are optional; `mode` is `ocr`, `understand`, `classify`, `extract` or `full`, default `full`) | The same structure as `result.json` (section 4.2), with `metadata.api_elapsed_s` added |
+| `POST /ocr` | `{"file_path": "C:\\scans\\a.pdf"}` | Same as `/process` with mode `ocr` (steps 1-3). A `language` field is accepted but ignored; the language comes from `config.yaml` |
+| `POST /classify` | `{"text": "..."}` | Keyword-rule classification of the text: label, confidence, method |
+| `POST /extract` | `{"text": "..."}` | `entities` and the entity `extracted_fields` of the text (no patterns.yaml fields) |
+| `GET /docs`, `GET /redoc` | - | Interactive API documentation |
+
+- `file_path` is a path on the PC that runs the API. A relative path is resolved
+  from the folder where uvicorn was started. Nothing is written to `output\`; the
+  result is only returned.
+- Status codes: 404 when the file does not exist, 422 for an unknown `mode` or an
+  invalid body, and 500 when processing fails (the message is in `detail`).
+- `config_overrides` replaces whole top-level sections of the configuration, for
+  example `{"handwriting": {"enabled": false}}`. A request with overrides gets its
+  own `DocumentProcessor`, so its models are loaded again, which is slow.
+- Requests are handled one document at a time (a lock around the shared processor); others wait their turn.
+- CORS allows only `http://localhost` and `http://127.0.0.1`.
 
 ---
 
-# 1. Purpose
+## 5. Configuration reference (`config/config.yaml`)
 
-Traditional OCR systems primarily answer:
+The engine reads `OCR_new\config\config.yaml` when a `DocumentProcessor`, the CLI
+or the API starts. The CLI can use another file with `--config`. Relative paths in
+the file are relative to `OCR_new`. After a change, restart the CDTRS backend (or
+the local API).
 
-> "What characters are present in this document?"
+### `offline_mode`
 
-This project aims to answer a broader question:
+| Key | Value | Meaning |
+|---|---|---|
+| `offline_mode` | `true` | Keep `true`. Only `check-offline` reads it, and reports "NOT ready" when it is false |
 
-> "What is present in this document, where is it present, what type of text is it, what does the content mean, and what information can be extracted from it?"
+### `paths`
 
-For example, a document may contain:
+| Key | Value | Meaning |
+|---|---|---|
+| `output_dir` | `output` | Output root for the CLI modes `ocr` and `patterns`. The other modes and `DocumentResult.save()` always write to `OCR_new\output` |
+| `temp_dir` | `temp` | Page images of the pdf2image (Poppler) fallback |
+| `patterns_file` | `extraction/patterns.yaml` | The regex field definitions |
+| `models_dir`, `input_dir` | | Not used by the pipeline |
 
-```text
-------------------------------------------------
-            PROJECT REPORT
+### `paddleocr`
 
-Project Name: ABC System
+| Key | Value | Meaning |
+|---|---|---|
+| `lang` | `en` | Language of the models and character set. Another language needs other models: run `setup_models.py` again (internet) |
+| `ocr_version` | `PP-OCRv4` | PaddleOCR 2.x model family (PP-OCR to PP-OCRv4). For `en` this means PP-OCRv3 detection and PP-OCRv4 recognition. `setup_models.py` also uses it |
+| `use_gpu` | `false` | The installed paddlepaddle is CPU-only |
+| `use_textline_orientation` | `true` | Runs the `cls` model, which turns upside-down (180 degree) lines round |
+| `text_det_limit_side_len` | `1920` | Pages are scaled so the longest side is at most this. A lower value uses less memory and is faster, but small text may be missed |
+| `text_det_limit_type` | `max` | Applies the limit to the longest side |
+| `text_det_thresh` | `0.2` | Pixel threshold for text. Lower keeps fainter strokes |
+| `text_det_box_thresh` | `0.4` | Minimum score of a text box. Lower keeps fainter lines, and also more false boxes |
+| `text_det_unclip_ratio` | `1.6` | Margin around each box. 1.8 merged neighbouring lines |
+| `det_model_dir`, `rec_model_dir`, `cls_model_dir` | `models/paddleocr/det` ... | The local model folders. If a folder has no model files, PaddleOCR's own cache (`~\.paddleocr`) is used |
+| `drop_score` | `0.25` | Lines read with a lower confidence are dropped |
 
-The system was developed to automate
-document processing.
+**Memory settings.** Paddle keeps working memory for every input shape it has seen
+and never frees it. These settings limit the number of shapes. One A4 page used to
+need more than 6 GB; now the peak is about 3 GB. Leave them as they are.
 
-Remarks:
-Please make the required corrections
-and submit the document again.
+| Key | Value | Meaning |
+|---|---|---|
+| `det_square_pad` | `true` | Pads each page with white (right and bottom) to one of three square sizes: 1/3, 2/3 or all of `text_det_limit_side_len` (640, 1280 or 1920 px). Coordinates do not change |
+| `rec_batch_num` | `1` | Reads text lines one at a time |
+| `rec_ratio_step` | `8` | Line images are widened to a multiple of 8 x line height (0 turns this off) |
+| `rec_max_ratio` | `32` | Lines longer than 32 x height are narrowed to fit |
 
-              [Handwritten Signature]
-------------------------------------------------
-```
+### `text_type_detection`
 
-The system should be able to identify:
+| Key | Value | Meaning |
+|---|---|---|
+| `enabled` | `true` | Printed/handwritten detection (`full` mode). When `false`, TrOCR re-reading is skipped too |
+| `model_path` | `models/classifiers/text_type` | When `classifier.pkl` is here (fine-tuning, `--task text_type`), it is used; otherwise the built-in model |
 
-```text
-Document
-│
-├── Printed Text
-│   ├── Project Report
-│   ├── Project Name
-│   └── Main Content
-│
-├── Handwritten Text
-│   ├── Remarks
-│   └── Signature
-│
-├── Document Structure
-│   ├── Header
-│   ├── Body
-│   └── Remarks Section
-│
-├── Semantic Meaning
-│   └── Project-related report
-│
-└── Extracted Information
-    ├── Project Name
-    └── Remarks
-```
+### `handwriting`
 
-This information can then be consumed by any external application.
+| Key | Value | Meaning |
+|---|---|---|
+| `enabled` | `true` | Re-reading with TrOCR on or off |
+| `model_path` | `models/handwriting` | Folder of handwriting models. `active.txt` names the one in use. If this folder itself holds a model, that model is used |
+| `device` | `cpu` | torch device. The installed torch is the CPU build |
+| `num_beams` | `3` | Beam search width. 1 is faster |
+| `max_new_tokens` | `64` | Maximum tokens generated for one line |
+| `replace_below_confidence` | `0.9` | UNKNOWN lines with a lower PaddleOCR confidence are re-read too |
+| `min_confidence` | `0.5` | TrOCR's reading replaces PaddleOCR's only when it is at least this confident and at least as confident as PaddleOCR |
+| `max_lines_per_page` | `80` | At most this many lines are re-read on one page (the first in reading order) |
 
----
+### `classification`
 
-# 2. Design Goals
+| Key | Value | Meaning |
+|---|---|---|
+| `model_path` | `models/classifiers/document` | Optional trained classifier: `classifier.pkl`, `vectorizer.pkl`, `label_encoder.pkl` |
+| `min_model_confidence` | `0.6` | The trained classifier's label is used when it is not UNKNOWN, reaches this confidence and is at least as confident as the keyword rules |
 
-The system is built around the following goals:
+Without a trained classifier, the keyword rules in `classification/rule_classifier.py`
+are used. They know INVOICE, LEAVE_APPLICATION, TECHNICAL_REPORT, LETTER, CONTRACT
+and RESUME. Confidence = matched keywords / (0.3 x keywords of that category), with
+a maximum of 1. The semantic step compares the text with eight built-in category
+descriptions: TECHNICAL_REPORT, INVOICE, LEAVE_APPLICATION, LETTER, FORM, CONTRACT,
+RESUME and GENERAL.
 
-### 2.1 Completely Offline
+### `ner`
 
-All inference, document processing, semantic analysis, classification, and fine-tuning must happen locally.
+| Key | Value | Meaning |
+|---|---|---|
+| `enabled` | `true` | `false`: spaCy is not loaded, and only the regex entity patterns run |
+| `model_path` | `models/ner` | spaCy model folders (with `meta.json`) here are tried first |
+| `package` | `en_core_web_sm` | The installed spaCy package, tried next |
+| `backend` | `spacy` | `regex`: never use spaCy |
 
-After the required models and dependencies are installed:
+### `preprocessing`
 
-```text
-Internet
-   X
-   │
-   X
-OCR Engine
-```
+| Key | Value | Meaning |
+|---|---|---|
+| `enabled` | `true` | Main switch for the steps below |
+| `grayscale` | `false` | Convert to grey |
+| `denoise` | `false` | Non-local-means denoising (slow on large pages) |
+| `contrast_enhance` | `false` | CLAHE contrast enhancement |
+| `threshold` | `false` | Binarise the page. This can remove faint handwriting strokes |
+| `threshold_method` | `adaptive` | `adaptive` or `otsu` |
+| `deskew` | `false` | Hough-line skew correction. Keep `false` for handwriting: slanted strokes look like skew |
+| `auto_rotate` | `false` | 90/180/270 degree page rotation by a projection heuristic. Keep `false`: it can flip handwritten pages. PaddleOCR's line classifier already turns upside-down lines round |
+| `border_removal` | `false` | Crops a 10 px border |
+| `upscale_factor` | `1.0` | Values above 1 enlarge the page before OCR |
+| `pdf_render_dpi` | `300` | Used only when `pdf.dpi` is missing |
 
-The system must not require:
+Preprocessing changes only the image that PaddleOCR reads. The printed/handwritten
+detector and TrOCR cut the lines out of the **unprocessed** page, using PaddleOCR's
+coordinates. Steps that move or resize the page (`upscale_factor`, `auto_rotate`,
+`deskew`, `border_removal`) therefore give them the wrong crops.
 
-* Cloud OCR APIs
-* Cloud AI APIs
-* Online embeddings
-* Online document processing
-* Automatic model downloads
-* External telemetry
-* Internet access during inference
-* Uploading documents to external services
+### `pdf`
 
----
+| Key | Value | Meaning |
+|---|---|---|
+| `dpi` | `300` | Render resolution of PDF pages. Lower uses less memory and is faster |
+| `page_image_format` | `PNG` | pdf2image fallback only |
+| `keep_temp_pages` | `false` | pdf2image fallback only: keep the page images in `temp\` |
 
-### 2.2 Independent
+### `docx`
 
-The system must work as a standalone application.
+| Key | Value | Meaning |
+|---|---|---|
+| `extract_embedded_images` | `true` | OCR the images embedded in a DOCX. Paragraph text is always read directly |
 
-It should not depend on another project or business application.
+### `output`
 
-Example:
+| Key | Value | Meaning |
+|---|---|---|
+| `json_indent` | `2` | JSON indentation for the CLI modes `ocr` and `patterns` (the other result files always use 2) |
+| `save_txt`, `save_json`, `save_region_crops` | | Not used by the current code. Text and JSON are always written, and region crops never are |
 
-```bash
-python main.py --mode full --input document.pdf
-```
+### `logging`
 
-The system should process the document and produce a complete structured result.
+| Key | Value | Meaning |
+|---|---|---|
+| `level` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
+| `log_to_file` | `true` | Also write a log file |
+| `log_dir`, `log_file` | `output`, `ocr_system.log` | The file is `OCR_new\output\ocr_system.log`, whatever the current folder |
+| `max_bytes`, `backup_count` | `5242880`, `3` | Rotates at 5 MB and keeps 3 old files |
 
----
+Logging is set up once per process. If the program already configured Python's
+root logger, OCR_new does not add its own handlers.
 
-### 2.3 Reusable
+### Optional keys (read by the code, not in the file)
 
-The same engine should be usable by completely different applications.
+| Key | Default | Meaning |
+|---|---|---|
+| `semantic.enabled` | `true` | `false` skips the semantic step |
+| `semantic.embedding_model` | `models/embeddings/model` | Embedding model folder |
+| `classification.rules_file` | `config/classification_rules.yaml` (does not exist, so the built-in rules are used) | YAML with `rules:` entries of the form `- label: X` / `keywords: [...]` |
+| `classification.categories_file` | none | YAML with `categories:` entries of the form `- label: X` / `description: ...` for the semantic category |
+| `pdf.poppler_path` | none | Poppler `bin` folder for the pdf2image fallback |
 
-```text
-                 OCR ENGINE
-                     │
-       ┌─────────────┼─────────────┐
-       │             │             │
-       ▼             ▼             ▼
-   Application A  Application B  Application C
-```
-
-The OCR engine should not contain application-specific business logic.
-
----
-
-### 2.4 Intelligent
-
-The system should go beyond raw OCR by providing:
-
-* Layout understanding
-* Handwritten/printed detection
-* Semantic understanding
-* Entity extraction
-* Document classification
-* Information extraction
-* Confidence scoring
-* Structured output
-
----
-
-### 2.5 Fine-Tunable
-
-The system must provide a dedicated mechanism for improving its models using user-provided data.
-
-Fine-tuning must also be possible **completely offline**.
-
-```text
-Local Dataset
-     │
-     ▼
-Local Annotation
-     │
-     ▼
-Offline Training
-     │
-     ▼
-Offline Evaluation
-     │
-     ▼
-Fine-Tuned Model
-     │
-     ▼
-Local Deployment
-```
+Like the other paths, relative `rules_file` and `categories_file` paths are relative
+to `OCR_new`.
 
 ---
 
-# 3. Supported Document Types
+## 6. Printed/handwritten detection and handwriting recognition
 
-The system should support common document formats including:
+Both run only in `full` mode (which is what CDTRS uses), after PaddleOCR has read
+every line.
 
-* JPG
-* JPEG
-* PNG
-* TIFF
-* Multi-page TIFF
-* PDF
-* Scanned PDF
-* DOCX
-* Fax images
-* Fax PDFs
-* Photographs of documents
+### 6.1 Printed or handwritten (`ocr/text_type_detector.py`)
 
-The architecture should allow additional formats to be added later.
+For each PaddleOCR line box, the detector:
 
----
+1. Cuts the line out of the page and scales it to 64 px high. Long horizontal rules
+   (underlines, ruled paper) are removed.
+2. Measures 20 shape features (`FEATURE_VERSION = 2`). Examples: how uniform the
+   glyph heights are, whether glyphs share one baseline and one top line, stroke
+   width and how much it varies, how much of each glyph box is ink, how much the
+   slant varies, and PaddleOCR's own confidence (print is usually read more
+   confidently).
+3. Estimates P(handwritten) with:
+   - `models/classifiers/text_type/classifier.pkl` when it exists (a Random Forest
+     you trained with `fineTune`). A classifier trained on an older feature version
+     is ignored, with a warning;
+   - otherwise the built-in logistic regression over 12 of the features. It was
+     fitted on about 1,900 lines: printed letters, notices and forms (scanned and
+     digital, 60+ fonts) and a handwritten notebook.
 
-# 4. Core Capabilities
+| Condition | `text_type` | `text_type_confidence` |
+|---|---|---|
+| P(handwritten) >= 0.70 | HANDWRITTEN | P |
+| P(handwritten) <= 0.35 | PRINTED | 1 - P |
+| between the two | UNKNOWN | max(P, 1 - P) |
+| fewer than 3 glyphs, or the crop is too small | UNKNOWN | 0.0 |
 
-| Capability              | Description                                           |
-| ----------------------- | ----------------------------------------------------- |
-| Offline OCR             | Complete local OCR processing                         |
-| Printed OCR             | Recognition of printed and typed text                 |
-| Scanned OCR             | Recognition of scanned documents                      |
-| Handwriting OCR         | Recognition of handwritten content                    |
-| Mixed-content OCR       | Handles handwritten + printed content together        |
-| Text-type detection     | Determines whether a region is handwritten or printed |
-| Layout analysis         | Detects and preserves document structure              |
-| Reading order           | Attempts to reconstruct logical reading order         |
-| Semantic understanding  | Understands meaning beyond exact keywords             |
-| Embeddings              | Generates local semantic representations              |
-| Semantic similarity     | Compares document/sentence meaning                    |
-| NER                     | Extracts entities from documents                      |
-| Classification          | Determines document category                          |
-| Information extraction  | Converts unstructured content into structured fields  |
-| Confidence scoring      | Provides confidence for important processing stages   |
-| Batch processing        | Processes multiple documents                          |
-| Structured output       | Produces standardized JSON                            |
-| Python integration      | Can be imported into other applications               |
-| CLI                     | Can be used independently                             |
-| Local API               | Can optionally expose a local service                 |
-| Offline fine-tuning     | Supports local model improvement                      |
-| Model management        | Stores and loads models locally                       |
-| Extensible architecture | New models and processing stages can be added         |
+The detector is cautious on purpose: when it is unsure, it answers UNKNOWN. (The
+label MIXED exists in the code but is never returned.)
 
----
+### 6.2 Reading handwriting with TrOCR (`ocr/handwriting_engine.py`)
 
-# 5. High-Level Architecture
+1. **Which lines.** Lines marked HANDWRITTEN, and UNKNOWN lines that PaddleOCR read
+   with confidence below `replace_below_confidence` (0.9). The crop must be at least
+   8 x 8 px. At most `max_lines_per_page` (80) lines per page are re-read.
+2. **Cleaning.** Each crop is converted to grey, ruled lines are painted out, and
+   the crop is trimmed to the band of the line itself. PaddleOCR's boxes often
+   include parts of the lines above and below, which makes TrOCR invent text.
+3. **Reading.** The active TrOCR model reads the lines in batches of 8, with beam
+   search (`num_beams` 3, at most `max_new_tokens` 64). Its confidence is the
+   average probability per token.
+4. **Decision.** TrOCR's text replaces PaddleOCR's only when it is not empty, its
+   confidence is at least `min_confidence` (0.5) **and** at least PaddleOCR's
+   confidence. Both readings are kept on the region (`handwriting_text`, and
+   `paddle_text` when replaced), `recognizer` becomes `handwriting`, and the full
+   text is rebuilt. The log shows `Handwriting model re-read N line(s), replaced M.`
 
-```text
-                       DOCUMENT
-                          │
-                          ▼
-                 File Type Detection
-                          │
-                          ▼
-                Document Normalization
-                          │
-                          ▼
-                    Page Extraction
-                          │
-                          ▼
-                  Image Preprocessing
-                          │
-                          ▼
-                    Layout Analysis
-                          │
-                          ▼
-                Text Region Detection
-                          │
-              ┌───────────┴───────────┐
-              │                       │
-              ▼                       ▼
-        Printed Region          Handwritten Region
-              │                       │
-              ▼                       ▼
-        Printed OCR             Handwriting OCR
-              │                       │
-              └───────────┬───────────┘
-                          │
-                          ▼
-                    Result Merger
-                          │
-                          ▼
-                Text-Type Detection
-                          │
-                          ▼
-                   OCR Result
-                          │
-             ┌────────────┼────────────┐
-             │            │            │
-             ▼            ▼            ▼
-        Semantic         NER        Keywords
-       Understanding      │
-             │            │
-             └────────────┼────────────┘
-                          ▼
-                  Document Classification
-                          │
-                          ▼
-                  Information Extraction
-                          │
-                          ▼
-                   Confidence Analysis
-                          │
-                          ▼
-                  Structured Result
-                          │
-                          ▼
-                 JSON / Python API
-```
+The model in use is the folder named in `models\handwriting\active.txt` (at first
+`trocr-small-handwritten`). With no active model, the log shows `No handwriting
+model is active; handwritten lines keep PaddleOCR's text.`
+
+### 6.3 Performance
+
+| What | Figure |
+|---|---|
+| Peak memory for one A4 page (with the memory settings) | about 3 GB (more than 6 GB before) |
+| TrOCR re-reading | about 25 s per handwritten page on 2 CPU cores |
+| Backend warm-up until the first OCR is possible | about 20 to 60 s after start |
+
+For faster handwriting pages, lower `num_beams` (1) or `max_lines_per_page`. For
+less memory, lower `text_det_limit_side_len` or `pdf.dpi`.
 
 ---
 
-# 6. Processing Pipeline
+## 7. Improving accuracy (fine-tuning)
 
-## Stage 1 — File Detection
+The full guide is **`fineTune\README.md`**. It works offline with the installed
+packages. In short:
 
-The system identifies the input document using:
+| What you can train | Command | Result |
+|---|---|---|
+| Handwriting reading (TrOCR), the most useful | `python fineTune\training\train.py --task handwriting` | `models\handwriting\v1`, `v2`, ... It is made active only when it reads the test lines better than the previous model and PaddleOCR |
+| Printed/handwritten detector | `python fineTune\training\train.py --task text_type` | `models\classifiers\text_type\classifier.pkl`, installed only when it scores at least as well as the built-in model on the test lines |
+| Document categories | `python fineTune\training\train.py --task classification` | `models\classifiers\document\` |
 
-* File extension
-* MIME type where available
-* Magic-byte/file-signature validation
+The steps: put scans or PDFs in `fineTune\datasets\raw\` -> `prepare_dataset.py`
+(cuts them into line images and `datasets\labels.csv`) -> `label_tool.py`
+(type the correct text) -> `training\train.py` -> `evaluation\evaluate.py` -> restart
+the backend. `set_active_model.py [name | --off]` lists, switches or rolls back the
+handwriting model. The double-click helpers `1_prepare_dataset.bat` to
+`6_choose_model.bat` in `fineTune\` run the same steps.
 
-Example:
+PaddleOCR itself is not retrained: its training tools are not part of the installed
+`paddleocr` package. Some problems can be fixed in `config.yaml` without training:
 
-```text
-document.pdf
-      ↓
-PDF detected
-      ↓
-PDF processor
-```
-
----
-
-# 7. Document Normalization
-
-Different document formats are converted into a common internal representation.
-
-```text
-PDF       ─┐
-DOCX      ─┤
-PNG       ─┤
-JPG       ─┼──► Normalized Document
-TIFF      ─┤
-FAX       ─┘
-```
-
-The normalized representation should preserve:
-
-```text
-document
-pages
-page_number
-image
-metadata
-source_format
-```
+| Problem | Setting to try |
+|---|---|
+| Faint handwriting is not found | Lower `paddleocr.text_det_thresh` / `text_det_box_thresh` |
+| Two lines are merged into one box | Lower `paddleocr.text_det_unclip_ratio` |
+| Too many junk lines | Raise `paddleocr.drop_score` |
+| Wrong TrOCR readings replace good ones | Raise `handwriting.min_confidence` |
+| Handwritten lines are marked PRINTED (so they are not re-read) | Train the printed/handwritten detector |
 
 ---
 
-# 8. Image Preprocessing
+## 8. Tests
 
-Real-world scanned documents can contain:
+The tests use the standard library's `unittest` (130 tests):
 
-* Noise
-* Low contrast
-* Rotation
-* Skew
-* Shadows
-* Uneven lighting
-* Compression artifacts
-* Background patterns
+```
+cd /d C:\CDTRS-main\OCR_new
+python -m unittest discover -s testing -t . -v
+```
 
-The preprocessing pipeline may include:
+One file only:
 
-* Grayscale conversion
-* Denoising
-* Contrast enhancement
-* CLAHE
-* Deskew
-* Auto-rotation
-* Thresholding
-* Adaptive thresholding
-* Otsu thresholding
-* Border removal
-* Perspective correction
-* Resolution enhancement
+```
+python -m unittest testing.test_text_type -v
+```
 
-The preprocessing pipeline must remain configurable.
-
-This is especially important for handwriting because aggressive thresholding can sometimes remove important handwriting strokes.
+| File | Covers |
+|---|---|
+| `test_document.py` | File type detection, document normalisation |
+| `test_preprocessing.py` | Deskew, denoise, threshold, orientation helpers |
+| `test_ocr.py` | Offline checker, preprocessor, PaddleOCR engine, OCR pipeline. The PaddleOCR tests are skipped when the models are missing |
+| `test_text_type.py` | Printed/handwritten detector and trained classifier loading |
+| `test_handwriting.py` | Handwriting engine (no model needed) |
+| `test_semantic.py` | Cosine similarity, ranking, TF-IDF keywords (no model needed) |
+| `test_classification.py` | Keyword-rule classifier |
+| `test_extraction.py` | NER engine, text cleaner, entity normaliser, entity extractor |
+| `test_patterns.py` | patterns.yaml loading and regex extraction |
+| `test_document_intelligence.py` | `DocumentProcessor` and `DocumentResult` |
+| `test_finetune.py` | Fine-tuning helpers (labels, splits, scores, line preparation) |
 
 ---
 
-# 9. Layout Analysis
+## 9. Folder structure
 
-The system should understand the spatial structure of a document.
-
-Possible region types include:
-
-```text
-HEADER
-FOOTER
-TITLE
-PARAGRAPH
-TABLE
-FORM
-IMAGE
-SIGNATURE
-HANDWRITTEN_NOTE
-STAMP
-PAGE_NUMBER
-TEXT
-UNKNOWN
 ```
-
-Each detected region should retain information such as:
-
-```json
-{
-  "region_id": 1,
-  "page": 1,
-  "bbox": [100, 200, 700, 250],
-  "region_type": "paragraph",
-  "confidence": 0.94
-}
-```
-
----
-
-# 10. Printed and Handwritten Text
-
-A major capability of the system is handling documents containing both printed and handwritten content.
-
-A page may contain:
-
-```text
-Printed form
-+
-Printed paragraphs
-+
-Handwritten remarks
-+
-Handwritten corrections
-+
-Signature
-```
-
-Therefore, the entire page should not necessarily be processed using only one recognition model.
-
-The pipeline can use:
-
-```text
-                     PAGE
-                       │
-                       ▼
-                Region Detection
-                       │
-          ┌────────────┼────────────┐
-          │            │            │
-          ▼            ▼            ▼
-       Printed      Handwritten    Unknown
-          │            │            │
-          ▼            ▼            ▼
-    Printed OCR   Handwriting OCR  Fallback
-          │            │            │
-          └────────────┼────────────┘
-                       ▼
-                  Result Merger
-```
-
----
-
-# 11. Text-Type Detection
-
-Each text region should be classified independently where possible.
-
-Possible labels:
-
-```text
-PRINTED
-HANDWRITTEN
-MIXED
-UNKNOWN
-```
-
-Example:
-
-```json
-{
-  "text": "Please revise this section.",
-  "text_type": "HANDWRITTEN",
-  "confidence": 0.91
-}
-```
-
-This allows downstream applications to know not only **what was written**, but also **how the text appeared in the source document**.
-
----
-
-# 12. OCR Engine Architecture
-
-OCR engines should implement a common interface.
-
-```text
-                    BaseOCREngine
-                         │
-          ┌──────────────┼──────────────┐
-          │              │              │
-          ▼              ▼              ▼
-      PaddleOCR      Handwriting      Future
-                       OCR Engine      Engines
-```
-
-Example interface:
-
-```python
-class BaseOCREngine:
-    def initialize(self, config):
-        pass
-
-    def recognize(self, image, page):
-        pass
-```
-
-The rest of the system should consume standardized OCR results instead of depending directly on a specific OCR implementation.
-
----
-
-# 13. OCR Result
-
-Every recognized text region should ideally contain:
-
-```text
-text
-confidence
-bounding_box
-page
-text_type
-region_type
-reading_order
-```
-
-Example:
-
-```json
-{
-  "text": "Project Completion Report",
-  "confidence": 0.97,
-  "bbox": [100, 80, 700, 130],
-  "page": 1,
-  "text_type": "PRINTED",
-  "region_type": "TITLE"
-}
-```
-
----
-
-# 14. Semantic Understanding
-
-OCR produces text.
-
-Semantic processing attempts to understand the meaning of that text.
-
-For example:
-
-```text
-Document A:
-"Requesting permission to remain absent for two days."
-
-Document B:
-"I will not be attending for the next two days."
-```
-
-Exact keyword matching may not identify these as related.
-
-A local semantic model can represent both texts as vectors:
-
-```text
-Text A
-  │
-  ▼
-Embedding A ─────┐
-                 │
-                 ▼
-          Semantic Similarity
-                 ▲
-                 │
-Embedding B ─────┘
-  ▲
-  │
-Text B
-```
-
-This allows the system to perform:
-
-* Semantic similarity
-* Semantic search
-* Document matching
-* Document classification
-* Category matching
-* Content grouping
-* Similar document retrieval
-
----
-
-# 15. Sentence Transformers
-
-The semantic layer should support local **Sentence Transformer-compatible embedding models**.
-
-The selected model should be stored locally:
-
-```text
-models/
-└── embeddings/
-    └── model/
-```
-
-Example:
-
-```python
-embedding = embedding_model.encode(text)
-```
-
-The system must load the model from the local filesystem during offline inference.
-
-No online embedding API should be required.
-
----
-
-# 16. Semantic Classification
-
-Document categories can be represented using semantic embeddings.
-
-Example:
-
-```text
-Document
-   │
-   ▼
-Embedding
-   │
-   ├── Leave Application       0.91
-   ├── Technical Report        0.38
-   ├── Invoice                 0.21
-   └── General Letter          0.62
-```
-
-The highest suitable similarity can be used as one signal for classification.
-
-Semantic classification can be combined with traditional machine-learning classification when required.
-
----
-
-# 17. Named Entity Recognition
-
-The system should support local Named Entity Recognition.
-
-Potential entity types include:
-
-```text
-PERSON
-ORGANIZATION
-LOCATION
-DATE
-TIME
-MONEY
-EMAIL
-PHONE
-PROJECT
-DEPARTMENT
-DOCUMENT_ID
-REFERENCE_NUMBER
-```
-
-Example:
-
-```text
-"John submitted the ABC project report
-to the Engineering Department on 20 September."
-```
-
-Possible output:
-
-```json
-{
-  "entities": [
-    {
-      "text": "John",
-      "label": "PERSON"
-    },
-    {
-      "text": "ABC",
-      "label": "PROJECT"
-    },
-    {
-      "text": "Engineering Department",
-      "label": "DEPARTMENT"
-    },
-    {
-      "text": "20 September",
-      "label": "DATE"
-    }
-  ]
-}
-```
-
----
-
-# 18. Information Extraction
-
-Information extraction combines multiple approaches.
-
-```text
-                    OCR Text
-                       │
-        ┌──────────────┼──────────────┐
-        │              │              │
-        ▼              ▼              ▼
-      Regex           NER         Semantic
-                                    Rules
-        │              │              │
-        └──────────────┼──────────────┘
-                       ▼
-                Structured Fields
-```
-
-The system should support:
-
-### Rule-based extraction
-
-Useful for predictable formats.
-
-### Regex extraction
-
-Useful for:
-
-* Dates
-* Email addresses
-* Phone numbers
-* IDs
-* Reference numbers
-* Amounts
-
-### NER
-
-Useful for entities whose exact format may vary.
-
-### Semantic extraction
-
-Useful when meaning matters more than exact wording.
-
----
-
-# 19. Document Classification
-
-The system should support multiple classification strategies.
-
-### Rule-based
-
-```text
-IF document contains known patterns
-THEN category = X
-```
-
-### Keyword-based
-
-```text
-invoice
-GST
-amount
-vendor
-```
-
-may indicate:
-
-```text
-INVOICE
-```
-
-### Semantic
-
-```text
-Document Embedding
-       ↓
-Compare with category embeddings
-       ↓
-Best semantic match
-```
-
-### Machine Learning
-
-Locally trained models can also be supported.
-
-Possible algorithms include:
-
-* Logistic Regression
-* SVM
-* Random Forest
-* Gradient Boosting
-* Neural Networks
-* Transformer-based classifiers
-
-The architecture should allow these approaches to coexist.
-
----
-
-# 20. Confidence System
-
-Confidence should be maintained throughout the pipeline.
-
-```text
-OCR confidence
-      +
-Text-type confidence
-      +
-Layout confidence
-      +
-Entity confidence
-      +
-Classification confidence
-      +
-Semantic similarity
-```
-
-Example:
-
-```json
-{
-  "classification": {
-    "label": "TECHNICAL_REPORT",
-    "confidence": 0.94
-  },
-  "text_type": {
-    "label": "HANDWRITTEN",
-    "confidence": 0.88
-  }
-}
-```
-
-Low-confidence results should be explicitly reported.
-
-The system should never silently present uncertain predictions as guaranteed facts.
-
----
-
-# 21. Standardized Output
-
-The most important integration principle is a standardized result format.
-
-Example:
-
-```json
-{
-  "document": {
-    "filename": "document.pdf",
-    "pages": 3,
-    "source_type": "PDF"
-  },
-
-  "ocr": {
-    "text": "...",
-    "regions": []
-  },
-
-  "layout": {
-    "regions": []
-  },
-
-  "classification": {
-    "label": "TECHNICAL_REPORT",
-    "confidence": 0.94
-  },
-
-  "entities": [],
-
-  "semantic": {
-    "categories": [],
-    "similarity": []
-  },
-
-  "extracted_fields": {},
-
-  "metadata": {}
-}
-```
-
-External applications can consume this standardized structure without knowing how the OCR was performed internally.
-
----
-
-# 22. Independent Application Mode
-
-The system must work as a standalone application.
-
-### OCR only
-
-```bash
-python main.py --mode ocr --input input/document.pdf
-```
-
-### Semantic understanding
-
-```bash
-python main.py --mode understand --input input/document.pdf
-```
-
-### Classification
-
-```bash
-python main.py --mode classify --input input/document.pdf
-```
-
-### Extraction
-
-```bash
-python main.py --mode extract --input input/document.pdf
-```
-
-### Complete pipeline
-
-```bash
-python main.py --mode full --input input/document.pdf
-```
-
-### Offline readiness
-
-```bash
-python main.py --mode check-offline
-```
-
----
-
-# 23. Reusable Module
-
-The same functionality should be available programmatically.
-
-Example:
-
-```python
-from document_intelligence import DocumentProcessor
-
-processor = DocumentProcessor()
-
-result = processor.process(
-    "document.pdf"
-)
-```
-
-The application receives a structured result:
-
-```python
-print(result.document_type)
-print(result.text)
-print(result.entities)
-print(result.extracted_fields)
-```
-
-This allows the engine to be embedded into other Python applications without modifying the OCR core.
-
----
-
-# 24. Optional Local API
-
-A local API can expose the engine to applications written in other languages.
-
-```text
-Application
-     │
-     │ Local request
-     ▼
-OCR / Document Intelligence Service
-     │
-     ▼
-Document Processing
-     │
-     ▼
-JSON Result
-     │
-     ▼
-Application
-```
-
-The API should run locally and must not require external internet connectivity.
-
----
-
-# 25. Project Structure
-
-```text
-ocr/
-│
-├── main.py
-├── requirements.txt
-├── setup_models.py
-├── README.md
-│
-├── config/
-│   └── config.yaml
-│
+OCR_new/
+├── main.py                     command line (section 4.1)
+├── document_intelligence.py    DocumentProcessor / DocumentResult (Python API)
+├── setup_models.py             check or re-copy the PaddleOCR models
+├── requirements.txt            pinned packages (same versions as imp.txt)
+├── README.md                   this file
+├── config/config.yaml          all settings (section 5)
+├── api/                        app.py (local REST API), schemas.py
+├── document/                   file_detector, pdf_processor, docx_processor,
+│                               image_processor, document_normalizer
+├── preprocessing/              image_preprocessor.py (used by the pipeline);
+│                               deskew.py, denoise.py, threshold.py, orientation.py (helpers)
+├── ocr/                        paddle_engine, text_type_detector, handwriting_engine,
+│                               ocr_pipeline, base_engine, result_merger (not used by the pipeline)
+├── layout/                     layout_analyzer, region_detector (contour heuristic), reading_order
+├── classification/             rule_classifier, model_classifier, base_classifier,
+│                               semantic_classifier (not used by the pipeline)
+├── nlp/                        ner_engine, entity_normalizer, text_cleaner
+├── extraction/                 entity_extractor, regex_engine, pattern_manager, patterns.yaml,
+│                               semantic_extractor (not used by the pipeline)
+├── semantic/                   embedding_engine, semantic_pipeline, document_classifier,
+│                               keyword_extractor, semantic_similarity
+├── output/                     json_writer, text_writer, output_writer;
+│                               results (<file name>/...) and ocr_system.log
+├── utils/                      logger, native_libs (Windows DLL order), offline_checker,
+│                               model_manager (not used by the pipeline)
 ├── models/
-│   ├── paddleocr/
-│   │   ├── det/
-│   │   ├── rec/
-│   │   └── cls/
-│   │
-│   ├── handwriting/
-│   │
-│   ├── embeddings/
-│   │
-│   ├── ner/
-│   │
-│   ├── classifiers/
-│   │
-│   └── layout/
-│
-├── input/
-├── output/
-├── temp/
-│
-├── document/
-│   ├── file_detector.py
-│   ├── pdf_processor.py
-│   ├── docx_processor.py
-│   ├── image_processor.py
-│   └── document_normalizer.py
-│
-├── preprocessing/
-│   ├── image_preprocessor.py
-│   ├── deskew.py
-│   ├── denoise.py
-│   ├── threshold.py
-│   └── orientation.py
-│
-├── layout/
-│   ├── layout_analyzer.py
-│   ├── region_detector.py
-│   └── reading_order.py
-│
-├── ocr/
-│   ├── base_engine.py
-│   ├── paddle_engine.py
-│   ├── handwriting_engine.py
-│   ├── text_type_detector.py
-│   ├── ocr_pipeline.py
-│   └── result_merger.py
-│
-├── semantic/
-│   ├── embedding_engine.py
-│   ├── semantic_similarity.py
-│   ├── document_classifier.py
-│   ├── keyword_extractor.py
-│   └── semantic_pipeline.py
-│
-├── nlp/
-│   ├── ner_engine.py
-│   ├── entity_normalizer.py
-│   └── text_cleaner.py
-│
-├── extraction/
-│   ├── pattern_manager.py
-│   ├── regex_engine.py
-│   ├── entity_extractor.py
-│   ├── semantic_extractor.py
-│   └── patterns.yaml
-│
-├── classification/
-│   ├── base_classifier.py
-│   ├── rule_classifier.py
-│   ├── semantic_classifier.py
-│   └── model_classifier.py
-│
-├── output/
-│   ├── output_writer.py
-│   ├── json_writer.py
-│   └── text_writer.py
-│
-├── api/
-│   ├── app.py
-│   └── schemas.py
-│
-├── testing/
-│   ├── test_document.py
-│   ├── test_preprocessing.py
-│   ├── test_ocr.py
-│   ├── test_handwriting.py
-│   ├── test_text_type.py
-│   ├── test_semantic.py
-│   ├── test_classification.py
-│   └── test_extraction.py
-│
-├── fineTune/
-│   ├── README.md
-│   │
-│   ├── datasets/
-│   │   ├── handwriting/
-│   │   ├── printed/
-│   │   ├── mixed/
-│   │   ├── text_type/
-│   │   └── classification/
-│   │
-│   ├── annotations/
-│   │
-│   ├── preprocessing/
-│   │
-│   ├── configs/
-│   │
-│   ├── training/
-│   │
-│   ├── evaluation/
-│   │
-│   ├── checkpoints/
-│   │
-│   └── export/
-│
-└── utils/
-    ├── logger.py
-    ├── offline_checker.py
-    └── model_manager.py
+│   ├── paddleocr/              det/, rec/, cls/, model_info.json      (in git)
+│   ├── handwriting/            trocr-small-handwritten/, v1/ ..., active.txt   (not in git)
+│   ├── embeddings/model/       all-MiniLM-L6-v2                         (in git)
+│   ├── ner/                    optional spaCy model folders (README only)
+│   ├── classifiers/            text_type/, document/ once trained       (not in git)
+│   └── layout/                 README only; no layout model is used
+├── fineTune/                   fine-tuning (see fineTune/README.md)
+│   ├── 1_prepare_dataset.bat ... 6_choose_model.bat
+│   ├── download_base_model.py, prepare_dataset.py, label_tool.py, set_active_model.py,
+│   │   common.py, tee.py
+│   ├── configs/                handwriting.yaml, text_type.yaml, classification.yaml
+│   ├── datasets/               raw/, lines/, classification/ (contents not in git)
+│   ├── training/train.py
+│   └── evaluation/evaluate.py
+├── testing/                    unittest tests (section 8)
+├── training/                   README.md only: training moved to fineTune/
+├── input/                      test_doc.png (sample input)
+└── temp/                       pdf2image temp folder; old experiment scripts and sample images
 ```
+
+Each model folder has a `README.md` with more detail.
 
 ---
 
-# 26. Offline Fine-Tuning
-
-The `fineTune/` directory is a dedicated workspace for improving the system using locally available data.
-
-Fine-tuning is intentionally separated from inference.
-
-```text
-                 MAIN SYSTEM
-                      │
-                      │ uses
-                      ▼
-                Trained Models
-                      ▲
-                      │
-                      │ exported from
-                      │
-                fineTune/
-                      │
-          ┌───────────┴───────────┐
-          │                       │
-          ▼                       ▼
-     Local Dataset          Local Annotations
-          │                       │
-          └───────────┬───────────┘
-                      ▼
-               Offline Training
-                      │
-                      ▼
-                Evaluation
-                      │
-                      ▼
-               Best Checkpoint
-                      │
-                      ▼
-                Model Export
-                      │
-                      ▼
-                   models/
-```
-
----
-
-# 27. Fine-Tuning Targets
-
-The framework should allow different components to be improved independently.
-
-## Handwriting Recognition
-
-Fine-tune handwriting recognition using domain-specific handwriting samples.
-
----
-
-## Text-Type Detection
-
-Improve classification between:
-
-```text
-PRINTED
-HANDWRITTEN
-MIXED
-UNKNOWN
-```
-
----
-
-## OCR Recognition
-
-Improve recognition accuracy for:
-
-* Specific handwriting styles
-* Poor-quality scans
-* Domain-specific vocabulary
-* Specialized documents
-* Unusual fonts
-* Low-resolution documents
-
----
-
-## Document Classification
-
-Train the system to recognize custom document categories.
-
-Example:
-
-```text
-CATEGORY_A
-CATEGORY_B
-CATEGORY_C
-CATEGORY_D
-```
-
-The actual categories must remain configurable and application-independent.
-
----
-
-## NER
-
-Customize entity extraction for domain-specific entities.
-
-Example:
-
-```text
-CUSTOM_ID
-PROJECT_CODE
-DEPARTMENT
-REFERENCE_NUMBER
-DOCUMENT_NUMBER
-```
-
----
-
-# 28. Offline Fine-Tuning Workflow
-
-The complete workflow should work without internet access after the initial model installation.
-
-```text
-1. Collect Data
-       │
-       ▼
-2. Store Data Locally
-       │
-       ▼
-3. Annotate Data Locally
-       │
-       ▼
-4. Validate Dataset
-       │
-       ▼
-5. Preprocess Dataset
-       │
-       ▼
-6. Fine-Tune Model
-       │
-       ▼
-7. Evaluate Model
-       │
-       ▼
-8. Compare With Existing Model
-       │
-       ▼
-9. Export Best Model
-       │
-       ▼
-10. Install Into Local models/
-       │
-       ▼
-11. Run Offline Inference
-```
-
----
-
-# 29. Important Fine-Tuning Requirement
-
-Fine-tuning must **not require uploading data to a server**.
-
-For example:
-
-```text
-fineTune/datasets/
-```
-
-can contain locally collected samples.
-
-Training runs locally:
-
-```bash
-python fineTune/training/train.py
-```
-
-Evaluation runs locally:
-
-```bash
-python fineTune/evaluation/evaluate.py
-```
-
-The resulting model is exported locally:
-
-```text
-fineTune/export/
-```
-
-and can then be placed into:
-
-```text
-models/
-```
-
-for inference.
-
----
-
-# 30. Incremental Offline Improvement
-
-The system should support improving the model over time.
-
-Example:
-
-```text
-Initial Model
-     │
-     ▼
-Process Documents
-     │
-     ▼
-Identify Incorrect/Low-Confidence Results
-     │
-     ▼
-Correct / Annotate Locally
-     │
-     ▼
-Add Data to Dataset
-     │
-     ▼
-Offline Fine-Tuning
-     │
-     ▼
-New Model
-     │
-     ▼
-Evaluate
-     │
-     ▼
-Deploy Locally
-```
-
-This allows the system to improve for a specific environment without sending documents outside the local system.
-
----
-
-# 31. Model Versioning
-
-Fine-tuned models should be versioned.
-
-Example:
-
-```text
-models/
-└── handwriting/
-    ├── v1/
-    ├── v2/
-    └── v3/
-```
-
-Metadata should record:
-
-```text
-model_version
-base_model
-training_dataset
-training_date
-number_of_samples
-evaluation_metrics
-configuration
-```
-
-This makes it possible to compare models and roll back when necessary.
-
----
-
-# 32. Dataset Separation
-
-Training data should be separated from validation and test data.
-
-```text
-Dataset
-│
-├── train/
-├── validation/
-└── test/
-```
-
-The test dataset should not be used during training.
-
-This is necessary to obtain meaningful evaluation results.
-
----
-
-# 33. Evaluation
-
-Different components require different metrics.
-
-### OCR
-
-```text
-Character Error Rate (CER)
-Word Error Rate (WER)
-```
-
-### Handwriting Recognition
-
-```text
-CER
-WER
-```
-
-### Text-Type Detection
-
-```text
-Accuracy
-Precision
-Recall
-F1-score
-Confusion Matrix
-```
-
-### Document Classification
-
-```text
-Accuracy
-Precision
-Recall
-F1-score
-Confusion Matrix
-```
-
-### NER
-
-```text
-Entity Precision
-Entity Recall
-Entity F1-score
-```
-
-### Semantic Classification
-
-```text
-Accuracy
-Macro F1
-Similarity threshold evaluation
-```
-
----
-
-# 34. Testing Architecture
-
-Every major component should be independently testable.
-
-```text
-                    System
-                       │
-       ┌───────────────┼───────────────┐
-       │               │               │
-       ▼               ▼               ▼
-      OCR          Semantics       Extraction
-       │               │               │
-       ▼               ▼               ▼
-   OCR Result      Meaning        Structured Data
-```
-
-Tests should exist for:
-
-* File detection
-* Document processing
-* Image preprocessing
-* Layout analysis
-* OCR
-* Handwriting recognition
-* Text-type detection
-* Semantic processing
-* NER
-* Classification
-* Extraction
-* Output generation
-* Offline readiness
-
----
-
-# 35. Configuration
-
-All major settings should be configurable.
-
-Example:
-
-```yaml
-offline_mode: true
-
-ocr:
-  engine: paddleocr
-  language: en
-  confidence_threshold: 0.5
-
-handwriting:
-  enabled: true
-  engine: local
-  confidence_threshold: 0.5
-
-text_type_detection:
-  enabled: true
-
-layout:
-  enabled: true
-
-semantic:
-  enabled: true
-  embedding_model: "models/embeddings/model"
-
-ner:
-  enabled: true
-  model_path: "models/ner"
-
-classification:
-  enabled: true
-  method: semantic
-
-preprocessing:
-  enabled: true
-  grayscale: true
-  denoise: true
-  deskew: true
-  threshold: true
-  auto_rotate: true
-
-pdf:
-  dpi: 300
-  poppler_path: null
-
-output:
-  format: json
-```
-
----
-
-# 36. Model Management
-
-All runtime models must be available locally.
-
-```text
-models/
-├── paddleocr/
-├── handwriting/
-├── embeddings/
-├── ner/
-├── classifiers/
-└── layout/
-```
-
-The runtime should never silently download a missing model.
-
-If a model is unavailable:
-
-```text
-ERROR: Required model is not available locally.
-
-Model:
-handwriting_recognition
-
-Expected location:
-models/handwriting/
-
-Offline mode is enabled.
-Automatic downloads are disabled.
-```
-
----
-
-# 37. Offline Readiness Check
-
-Run:
-
-```bash
-python main.py --mode check-offline
-```
-
-The system should verify:
-
-```text
-========================================
-OFFLINE READINESS CHECK
-========================================
-
-OCR models                  ✓
-Handwriting model           ✓
-Embedding model             ✓
-NER model                   ✓
-Classification model        ✓
-Layout model                ✓
-Configuration               ✓
-
-Automatic downloads         DISABLED
-External API access        DISABLED
-Internet dependency         NONE
-
-RESULT:
-SYSTEM READY FOR OFFLINE OPERATION
-```
-
----
-
-# 38. Output Structure
-
-For:
-
-```text
-input/document.pdf
-```
-
-the system may generate:
-
-```text
-output/document/
-│
-├── ocr.txt
-├── ocr.json
-├── layout.json
-├── text_types.json
-├── entities.json
-├── semantic.json
-├── classification.json
-├── extracted.json
-└── result.json
-```
-
----
-
-# 39. Example Complete Result
-
-```json
-{
-  "document": {
-    "filename": "document.pdf",
-    "pages": 2,
-    "source_type": "PDF"
-  },
-
-  "classification": {
-    "label": "TECHNICAL_DOCUMENT",
-    "confidence": 0.94
-  },
-
-  "regions": [
-    {
-      "page": 1,
-      "bbox": [100, 100, 700, 150],
-      "text": "Technical Report",
-      "text_type": "PRINTED",
-      "confidence": 0.97
-    },
-    {
-      "page": 1,
-      "bbox": [120, 600, 720, 670],
-      "text": "Please make the required corrections.",
-      "text_type": "HANDWRITTEN",
-      "confidence": 0.88
-    }
-  ],
-
-  "entities": [
-    {
-      "text": "20 September",
-      "label": "DATE",
-      "confidence": 0.91
-    }
-  ],
-
-  "extracted_fields": {
-    "title": "Technical Report"
-  },
-
-  "semantic": {
-    "categories": [
-      {
-        "label": "TECHNICAL_DOCUMENT",
-        "similarity": 0.94
-      }
-    ]
-  }
-}
-```
-
----
-
-# 40. Application Integration
-
-External applications should consume the output rather than modify the OCR pipeline.
-
-```text
-                 DOCUMENT
-                     │
-                     ▼
-          DOCUMENT INTELLIGENCE ENGINE
-                     │
-                     ▼
-              STANDARD RESULT
-                     │
-       ┌─────────────┼─────────────┐
-       │             │             │
-       ▼             ▼             ▼
- Application A   Application B   Application C
-```
-
-Each application can use the result differently.
-
-For example, one application may use:
-
-```text
-document_type
-```
-
-while another may use:
-
-```text
-entities
-```
-
-and another may use:
-
-```text
-semantic similarity
-```
-
-The OCR engine remains independent.
-
----
-
-# 41. Separation of Responsibilities
-
-The project deliberately separates **document intelligence** from **application business logic**.
-
-## Document Intelligence Engine
-
-Responsible for:
-
-```text
-Document
- ↓
-Preprocessing
- ↓
-Layout
- ↓
-OCR
- ↓
-Handwriting Detection
- ↓
-Text-Type Detection
- ↓
-Semantic Understanding
- ↓
-NER
- ↓
-Classification
- ↓
-Information Extraction
- ↓
-Structured Result
-```
-
-## External Application
-
-Responsible for:
-
-```text
-Structured Result
-       ↓
-Application-specific rules
-       ↓
-Workflow
-       ↓
-Actions
-```
-
-The OCR engine should not contain assumptions about how a particular application uses the extracted information.
-
----
-
-# 42. Extending the System
-
-The architecture should make it possible to add new components without rewriting the complete pipeline.
-
-### New OCR Engine
-
-Add:
-
-```text
-ocr/new_engine.py
-```
-
-implementing:
-
-```python
-BaseOCREngine
-```
-
----
-
-### New Embedding Model
-
-Place the model under:
-
-```text
-models/embeddings/
-```
-
-and configure its path.
-
----
-
-### New Classifier
-
-Implement the classifier interface under:
-
-```text
-classification/
-```
-
----
-
-### New NER Model
-
-Place the model under:
-
-```text
-models/ner/
-```
-
----
-
-### New Document Format
-
-Add a processor under:
-
-```text
-document/
-```
-
----
-
-# 43. Recommended Architecture Philosophy
-
-The system should follow these principles:
-
-### Offline First
-
-Local inference and local training.
-
-### Modular
-
-Each component can be replaced independently.
-
-### Model Agnostic
-
-Do not permanently couple the architecture to a single OCR or NLP model.
-
-### Application Independent
-
-No application-specific business rules inside the core engine.
-
-### Explainable
-
-Provide:
-
-```text
-What was detected?
-Where was it detected?
-What type of text was detected?
-What confidence does the model have?
-Why was the document classified this way?
-```
-
-### Fine-Tunable
-
-Allow local data to improve model performance.
-
-### Reproducible
-
-Track model versions, datasets and evaluation metrics.
-
-### Privacy Focused
-
-Documents remain local during processing and training.
-
----
-
-# 44. Future Roadmap
-
-Potential future capabilities include:
-
-* Advanced handwriting recognition
-* Better handwritten/printed segmentation
-* Table detection and extraction
-* Form understanding
-* Signature detection
-* Stamp/seal detection
-* Checkbox recognition
-* Mathematical expression recognition
-* Multi-language OCR
-* Multilingual embeddings
-* Local vector database
-* Semantic document search
-* Document similarity search
-* Active learning
-* Human-in-the-loop correction
-* Confidence-based manual verification
-* Incremental offline fine-tuning
-* Model version management
-* GPU acceleration
-* Local REST API
-* Python SDK
-* Desktop GUI
-* Batch processing
-* Parallel document processing
-* Custom domain-specific models
-
----
-
-# 45. Complete System Concept
-
-The final architecture can be summarized as:
-
-```text
-                         RAW DOCUMENT
-                              │
-                              ▼
-                     DOCUMENT PROCESSING
-                              │
-                              ▼
-                       IMAGE PREPROCESSING
-                              │
-                              ▼
-                        LAYOUT ANALYSIS
-                              │
-                              ▼
-                     TEXT REGION DETECTION
-                              │
-                 ┌────────────┴────────────┐
-                 │                         │
-                 ▼                         ▼
-             PRINTED                   HANDWRITTEN
-                 │                         │
-                 ▼                         ▼
-            PRINTED OCR              HANDWRITING OCR
-                 │                         │
-                 └────────────┬────────────┘
-                              ▼
-                         OCR RESULTS
-                              │
-                              ▼
-                    TEXT-TYPE INFORMATION
-                              │
-                              ▼
-                     SEMANTIC PROCESSING
-                              │
-              ┌───────────────┼───────────────┐
-              │               │               │
-              ▼               ▼               ▼
-          Embeddings          NER        Classification
-              │               │               │
-              └───────────────┼───────────────┘
-                              ▼
-                    INFORMATION EXTRACTION
-                              │
-                              ▼
-                     CONFIDENCE ANALYSIS
-                              │
-                              ▼
-                    STANDARDIZED JSON
-                              │
-               ┌──────────────┼──────────────┐
-               │              │              │
-               ▼              ▼              ▼
-          Application 1   Application 2   Application 3
-```
-
-And the improvement cycle is:
-
-```text
-                 EXISTING MODEL
-                       │
-                       ▼
-                OFFLINE INFERENCE
-                       │
-                       ▼
-                LOW-CONFIDENCE /
-                INCORRECT RESULTS
-                       │
-                       ▼
-                  LOCAL DATA
-                       │
-                       ▼
-                  ANNOTATION
-                       │
-                       ▼
-              OFFLINE FINE-TUNING
-                       │
-                       ▼
-                  EVALUATION
-                       │
-                       ▼
-                BETTER MODEL
-                       │
-                       ▼
-               LOCAL DEPLOYMENT
-```
-
----
-
-# 46. Final Objective
-
-This project is intended to be a **general-purpose Offline OCR and Document Intelligence Engine**, rather than an OCR implementation tied to one particular application.
-
-Its responsibility is to transform:
-
-```text
-RAW DOCUMENT
-```
-
-into:
-
-```text
-UNDERSTOOD DOCUMENT
-```
-
-by combining:
-
-```text
-OCR
-+
-Handwriting Recognition
-+
-Printed/Handwritten Detection
-+
-Layout Analysis
-+
-Semantic Embeddings
-+
-Named Entity Recognition
-+
-Document Classification
-+
-Information Extraction
-+
-Confidence Analysis
-```
-
-The system should remain:
-
-```text
-        INDEPENDENT
-             +
-         REUSABLE
-             +
-          OFFLINE
-             +
-       FINE-TUNABLE
-             +
-          MODULAR
-             +
-      APPLICATION-AGNOSTIC
-```
-
-The same engine can therefore be integrated into any application that needs to process and understand documents, without requiring the engine itself to know how the consuming application will use the extracted information.
-
----
-
-# License
-
-MIT License. See `LICENSE` for details.
+## 10. Troubleshooting
+
+| Problem | Cause and fix |
+|---|---|
+| `ERROR: PaddleOCR model files not found locally`, or `[MISSING]` from `setup_models.py --check` | `models\paddleocr\det`, `rec` or `cls` is empty. The models are tracked in git, so restore them from the repository, or run `python setup_models.py` (internet is needed if `~\.paddleocr` has no copy) |
+| The first document takes long | Models load when they are first needed. In CDTRS, warm-up takes about 20 to 60 s after the backend starts, and TrOCR loads with the first document. Each CLI run loads everything again; use the Python API for batches |
+| Out of memory, the PC becomes very slow, or the backend process disappears during OCR | Keep the memory settings (`det_square_pad: true`, `rec_batch_num: 1`, `rec_ratio_step: 8`, `rec_max_ratio: 32`). Lower `text_det_limit_side_len` (for example 1280) or `pdf.dpi` (for example 200). Do not run the CLI or API on the same small PC while the backend is doing OCR, because each process loads its own models. Paddle memory is released only when the process ends, so restarting the backend frees it |
+| Handwriting is still read badly, or `recognizer` is never `handwriting` | Check the log for `No handwriting model is active`. Run `python fineTune\set_active_model.py`, and if no model is listed, `python fineTune\download_base_model.py`. Check that `handwriting.enabled` and `text_type_detection.enabled` are `true` and that the mode is `full`. In `text_types.json`, lines marked PRINTED are not re-read (train the detector). Lines where TrOCR was less confident keep PaddleOCR's text; see `handwriting_text` in `result.json`. Restart the backend after any change |
+| `active.txt names 'x', which is not a model folder` | Choose an installed model with `python fineTune\set_active_model.py <name>` |
+| `Text-type classifier ... was trained with older features` | Retrain it: `python fineTune\training\train.py --task text_type`. Until then, the built-in model is used |
+| Windows: `torch` fails to load (DLL error), or the backend closes without an error and the app says "remote host closed the connection" | DLL load order (section 2). Start the backend with `start_backend.bat`. In your own scripts, import `document_intelligence` before `paddleocr`. Use the 64-bit Python 3.12 |
+| Only regex entities are found (log: `NER engine using regex fallback backend` or `NER engine is DISABLED in config`) | `en_core_web_sm` cannot be loaded, or `ner.enabled` is `false` or `ner.backend` is `regex`. Test with `python -c "import spacy; spacy.load('en_core_web_sm')"` |
+| `semantic.json` has `"embedding": null` or an error | `models\embeddings\model\` is missing or incomplete. Restore it from git |
+| Handwritten pages come out rotated or garbled | Keep `preprocessing.deskew` and `auto_rotate` `false` (section 5) |
+| `[ERROR] Input file not found` with a relative path | CLI paths are relative to `OCR_new`. Use a full path in quotes |
+| `[ERROR] Configuration file not found` | The `--config` path is wrong. A relative path is taken from the current folder |
+| A PDF page gives no text (log: `remains blank after fallbacks`) | The page is empty or could not be rendered. Scan it again, or convert it to an image |
+| The local API does not start, or `/health` is `DEGRADED` | Port already in use: pick a free port (not the backend's 8000). `DEGRADED`: see `models_available`; `paddleocr: false` means the PaddleOCR models are missing (first row) |
+| Where are the logs? | `OCR_new\output\ocr_system.log` (and the backend console) |

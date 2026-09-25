@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -25,28 +26,58 @@ class DepartmentDialog(QDialog):
     def __init__(self, department: Dict[str, Any] = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Edit Department" if department else "Add Department")
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(520)
         self.department = department or {}
 
+        field_style = "padding: 8px; border: 1px solid #d0d5dd; border-radius: 6px;"
         layout = QFormLayout(self)
-        self.name_input = QLineEdit(self.department.get("name", ""))
-        self.code_input = QLineEdit(self.department.get("code", ""))
-        
-        self.name_input.setStyleSheet("padding: 8px; border: 1px solid #d0d5dd; border-radius: 6px;")
-        self.code_input.setStyleSheet("padding: 8px; border: 1px solid #d0d5dd; border-radius: 6px;")
+        self.name_input = QLineEdit(self.department.get("name") or "")
+        self.code_input = QLineEdit(self.department.get("code") or "")
+
+        # Used by the routing suggestion: what this department handles, and
+        # the words that identify its documents.
+        self.description_input = QPlainTextEdit(self.department.get("description") or "")
+        self.description_input.setPlaceholderText(
+            "What this department handles, e.g. \"Budgets, payments, salaries, bills and audit.\""
+        )
+        self.description_input.setFixedHeight(90)
+        self.keywords_input = QLineEdit(self.department.get("keywords") or "")
+        self.keywords_input.setPlaceholderText("Comma separated, e.g. salary, invoice, GST, audit")
+
+        for widget in (self.name_input, self.code_input, self.description_input, self.keywords_input):
+            widget.setStyleSheet(field_style)
+
+        hint = QLabel(
+            "Description and keywords are used to suggest this department when a "
+            "document is registered. Keywords written in capitals (e.g. GST, IT) "
+            "must appear in capitals in the document."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #6b7280; font-size: 11px;")
 
         layout.addRow("Name:", self.name_input)
         layout.addRow("Code:", self.code_input)
+        layout.addRow("Description:", self.description_input)
+        layout.addRow("Routing keywords:", self.keywords_input)
+        layout.addRow("", hint)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
+
+    def _validate_and_accept(self):
+        if not self.name_input.text().strip():
+            QMessageBox.warning(self, "Department", "Please enter the department name.")
+            return
+        self.accept()
 
     def values(self):
         return {
             "name": self.name_input.text().strip(),
             "code": self.code_input.text().strip(),
+            "description": self.description_input.toPlainText().strip(),
+            "keywords": self.keywords_input.text().strip(),
         }
 
 class DepartmentConfigurationPage(QWidget):
@@ -114,7 +145,7 @@ class DepartmentConfigurationPage(QWidget):
         toolbar.setSpacing(12)
         
         self.search = QLineEdit()
-        self.search.setPlaceholderText("🔍 Search departments by name or code...")
+        self.search.setPlaceholderText("🔍 Search departments by name, code or keyword...")
         self.search.setStyleSheet("padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: #f9fafb;")
         self.search.textChanged.connect(self._render)
 
@@ -150,9 +181,9 @@ class DepartmentConfigurationPage(QWidget):
         toolbar.addLayout(sort_layout)
         toolbar.addWidget(clear_btn, 0, Qt.AlignmentFlag.AlignBottom)
 
-        self.table = QTableWidget(0, 5)
+        self.table = QTableWidget(0, 6)
         self.table.setShowGrid(False)
-        self.table.setHorizontalHeaderLabels(["#", "Department Name", "Code", "Status", "Actions"])
+        self.table.setHorizontalHeaderLabels(["#", "Department Name", "Code", "Routing Keywords", "Status", "Actions"])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setAlternatingRowColors(True)
@@ -160,8 +191,9 @@ class DepartmentConfigurationPage(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.table.setColumnWidth(0, 50)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(4, 280)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(5, 280)
         
         self.table.setStyleSheet('''
             QTableWidget {
@@ -285,7 +317,9 @@ class DepartmentConfigurationPage(QWidget):
             active = bool(dept.get("is_active", True))
             if active: active_count += 1
             
-            text = f"{dept.get('name', '')} {dept.get('code', '')}".lower()
+            text = " ".join(
+                str(dept.get(key) or "") for key in ("name", "code", "keywords", "description")
+            ).lower()
 
             if query and query not in text:
                 continue
@@ -324,6 +358,17 @@ class DepartmentConfigurationPage(QWidget):
             
             # Code
             self.table.setItem(r, 2, QTableWidgetItem(code))
+
+            # Routing keywords (description in the tooltip)
+            keywords = str(dept.get("keywords") or "")
+            kw_item = QTableWidgetItem(keywords if len(keywords) <= 80 else keywords[:77] + "...")
+            tooltip = "\n\n".join(
+                part for part in (str(dept.get("description") or ""), keywords) if part
+            )
+            kw_item.setToolTip(tooltip or "No description or keywords yet - click Edit to add them.")
+            if not keywords:
+                kw_item.setText("—")
+            self.table.setItem(r, 3, kw_item)
             
             # Status Pill
             status_widget = QWidget()
@@ -337,7 +382,7 @@ class DepartmentConfigurationPage(QWidget):
             else:
                 pill.setStyleSheet("background: #fee2e2; color: #991b1b; padding: 4px 10px; border-radius: 12px; font-weight: 600; font-size: 12px;")
             status_layout.addWidget(pill)
-            self.table.setCellWidget(r, 3, status_widget)
+            self.table.setCellWidget(r, 4, status_widget)
             
             # Actions
             actions_widget = QWidget()
@@ -361,7 +406,7 @@ class DepartmentConfigurationPage(QWidget):
             
             actions_layout.addWidget(edit_btn)
             actions_layout.addWidget(dots_btn)
-            self.table.setCellWidget(r, 4, actions_widget)
+            self.table.setCellWidget(r, 5, actions_widget)
         
         self.table.verticalHeader().setDefaultSectionSize(54)
 

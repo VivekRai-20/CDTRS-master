@@ -2,63 +2,93 @@
   "departments": [
     {
       "name": "Product Strategy",
-      "code": "PROD"
+      "code": "PROD",
+      "description": "Product planning and roadmaps: product requirements, feature prioritisation, release plans and product reviews.",
+      "keywords": "product roadmap, product strategy, requirements, feature, release plan, product review, specification, prioritisation"
     },
     {
       "name": "Engineering & Innovation",
-      "code": "ENG"
+      "code": "ENG",
+      "description": "Engineering and innovation work: design, development, testing, technical specifications, prototypes and installation of systems and equipment.",
+      "keywords": "engineering, design, development, prototype, technical specification, testing, installation, commissioning, drawing, innovation"
     },
     {
       "name": "Executive Office",
-      "code": "EXEC"
+      "code": "EXEC",
+      "description": "Director's office: board and management meetings, policy decisions, directives, minutes and matters for the Director's attention.",
+      "keywords": "board meeting, minutes, agenda, policy, directive, director, management meeting, circular, approval of competent authority"
     },
     {
       "name": "Enterprise Solutions",
-      "code": "ENT"
+      "code": "ENT",
+      "description": "Enterprise software solutions for the organisation: ERP, business applications, system integration and enterprise platforms.",
+      "keywords": "ERP, enterprise application, system integration, business application, platform, SAP, implementation, solution architecture"
     },
     {
       "name": "Customer Experience",
-      "code": "CX"
+      "code": "CX",
+      "description": "Customer and public relations: complaints, grievances, feedback, customer queries and service requests.",
+      "keywords": "complaint, grievance, feedback, customer, citizen, query, service request, helpdesk, public relations"
     },
     {
       "name": "Corporate Research",
-      "code": "CR"
+      "code": "CR",
+      "description": "Corporate research: studies, research proposals, publications, patents, surveys and collaboration with research institutes.",
+      "keywords": "research, study, research proposal, publication, patent, survey, laboratory, journal, collaboration, R&D"
     },
     {
       "name": "Market & Business Transformation",
-      "code": "MBT"
+      "code": "MBT",
+      "description": "Market analysis and business transformation: market studies, business plans, process improvement and change programmes.",
+      "keywords": "market study, market analysis, business plan, transformation, process improvement, change management, competitor, growth strategy"
     },
     {
       "name": "Partnerships & Technology",
-      "code": "PTN"
+      "code": "PTN",
+      "description": "Partnerships and technology collaboration: MoUs, agreements with partners, technology transfer and joint projects.",
+      "keywords": "MoU, memorandum of understanding, partnership, agreement, collaboration, technology transfer, joint venture, partner"
     },
     {
       "name": "Product Consulting",
-      "code": "CONS"
+      "code": "CONS",
+      "description": "Product consulting for clients: consulting assignments, client proposals, advisory reports and project evaluation.",
+      "keywords": "consulting, consultancy, advisory, client proposal, assignment, evaluation report, feasibility, terms of reference"
     },
     {
       "name": "Information Technology",
-      "code": "TECH"
+      "code": "TECH",
+      "description": "Information technology: computers, network, servers, e-mail, software licences, cyber security, websites and IT support.",
+      "keywords": "computer, network, server, software, hardware, e-mail, internet, website, portal, cyber security, firewall, antivirus, backup, printer, IT support, licence"
     },
     {
       "name": "Operations & Procurement",
-      "code": "OPS"
+      "code": "OPS",
+      "description": "Operations and procurement: purchase of goods and services, tenders, quotations, vendors, stores, inventory and logistics.",
+      "keywords": "purchase, procurement, tender, quotation, vendor, supplier, purchase order, GeM, bid, stores, inventory, stock, logistics, contract"
     },
     {
       "name": "Talent Management",
-      "code": "TALENT"
+      "code": "TALENT",
+      "description": "Human resources and talent management: recruitment, appointments, leave, transfers, promotions, training and staff matters.",
+      "keywords": "recruitment, appointment, interview, leave, transfer, promotion, training, joining, resignation, retirement, staff, attendance, increment, deputation"
     },
     {
       "name": "Corporate Administration",
-      "code": "CORP"
+      "code": "CORP",
+      "description": "Corporate administration: buildings and facilities, maintenance, vehicles, security, housekeeping, stationery and general administration.",
+      "keywords": "administration, maintenance, repair, vehicle, building, housekeeping, security, stationery, furniture, electricity, canteen, accommodation, premises"
     },
     {
       "name": "Finance & Accounts",
-      "code": "FIN"
+      "code": "FIN",
+      "description": "Finance and accounts: budgets, payments, salaries, bills, invoices, reimbursements, audit, taxes and financial sanctions.",
+      "keywords": "budget, payment, salary, bill, invoice, reimbursement, expenditure, audit, funds, GST, TDS, tax, voucher, financial sanction, pension, advance, refund"
     },
     {
       "name": "Business Support",
-      "code": "SUPPORT"
+      "code": "SUPPORT",
+      "description": "Business support services: coordination, documentation, record keeping, office support and general assistance to departments.",
+      "keywords": "coordination, documentation, records, record keeping, filing, dispatch, office support, correspondence, general assistance"
     }
   ],
   "system_users": [

@@ -1,43 +1,35 @@
 # =============================================================================
 # requirements.txt
-# Offline OCR & Document Information-Extraction System
+# Offline OCR & Document Intelligence Engine (OCR_new)
 # =============================================================================
 #
-# IMPORTANT — Python version requirement:
-#   PaddlePaddle ONLY supports Python 3.8, 3.9, 3.10, 3.11, 3.12.
-#   Python 3.13 and 3.14 are NOT supported.
+# These pins are identical to imp.txt, the package set installed on the CDTRS
+# PC (Python 3.12, 64-bit, installed per user).  Nothing needs to be installed
+# for CDTRS: the packages are already there.  Do not add packages that are not
+# in imp.txt.
 #
-#   Recommended: Python 3.11 or 3.12
-#   Download: https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
+# Python: 3.12 (64-bit).  PaddlePaddle 2.6.2 does not support Python 3.13+.
 #
-# Setup (recommended order):
-#   1. Install Python 3.11 or 3.12 from python.org
-#   2. py -3.12 -m venv .venv
-#   3. .venv\Scripts\activate
-#   4. pip install -r requirements.txt
+# Setting up another PC (needs internet):
+#   python -m pip install -r requirements.txt
+# The spaCy model en_core_web_sm 3.8.0 is also part of imp.txt; it is not
+# listed here.
 #
-# GPU note:
-#   The default installs CPU PaddlePaddle.
-#   For GPU (CUDA 11.x), replace paddlepaddle with:
-#     pip install paddlepaddle-gpu==2.6.2 -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html
-#   Or for CUDA 11.8:
-#     pip install paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+# OCR: PaddleOCR 2.8.1 on paddlepaddle 2.6.2, CPU only (config.yaml:
+# paddleocr.use_gpu: false).  PaddleOCR 3.x is not supported.  The PaddleOCR
+# models are in models/paddleocr/ (tracked in git; check with
+# python setup_models.py --check).
 #
-# PDF Rendering note:
-#   - pypdfium2 & pymupdf are self-contained and do NOT require external binaries.
-#   - pdf2image is included as a fallback and requires Poppler binaries:
-#       Windows: https://github.com/oschwartz10612/poppler-windows/releases
-#       Linux:   sudo apt install poppler-utils
-#       macOS:   brew install poppler
+# PDF rendering: pypdfium2 first, then PyMuPDF; both are self-contained.
+# pdf2image is only a last fallback and needs Poppler (config.yaml:
+# pdf.poppler_path).
+#
+# Tests use the standard library's unittest (no pytest):
+#   python -m unittest discover -s testing -t . -v
 # =============================================================================
 
 # ── Core OCR ──────────────────────────────────────────────────────────────────
-# PaddleOCR 3.x requires PaddlePaddle 3.x AND Python 3.8-3.12
-# PaddleX 3.x is pulled in automatically as a dependency of paddleocr 3.x
-# Verified working combination: paddlepaddle==3.1.0 + paddleocr>=3.7.0
-
-# Versions installed on the target machine (keep them in sync with the
-# project requirements; PaddleOCR 2.8.1 / PaddlePaddle 2.6.2 is the supported pair).
+# PaddleOCR 2.8.1 / PaddlePaddle 2.6.2 (CPU) is the supported pair.
 paddlepaddle==2.6.2
 paddleocr==2.8.1
 opencv-python==4.10.0.84
@@ -60,8 +52,12 @@ editdistance==0.8.0      # CER/WER metric computation in fine-tuning evaluation
 sentence-transformers==5.6.1  # Offline dense embeddings (semantic/embedding_engine.py)
 torch==2.13.0            # Deep learning backend for TrOCR handwriting recognition
 transformers==5.15.0     # Offline TrOCR transformer models (ocr/handwriting_engine.py)
+torchvision==0.28.0      # Image preprocessing used by the TrOCR processor
+huggingface_hub==1.27.0  # One-time model download (fineTune/download_base_model.py)
+sentencepiece==0.2.2     # TrOCR tokenizer
+PySide6==6.7.2           # Label tool (fineTune/label_tool.py) - also used by the CDTRS frontend
 PyYAML==6.0.2
 
-# Not installed on the target machine, so not required:
-#   yake    - keyword extraction falls back to TF-IDF (scikit-learn) automatically
-#   pytest  - only needed to run OCR_new/testing
+# Every package above is pinned in imp.txt (the installed set).  Nothing else
+# is used: keyword extraction uses scikit-learn's TF-IDF, and the tests in
+# testing/ use the standard library's unittest (no pytest).

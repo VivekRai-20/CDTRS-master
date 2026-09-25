@@ -1,22 +1,26 @@
-﻿# models/ner/
+# models/ner/
 
-Place a spaCy NER model here for named entity recognition.
+Named-entity recognition (people, organisations, places, dates, amounts) for
+`nlp/ner_engine.py`.
 
-## Option 1: spaCy model
+The engine uses the first of these that it finds:
 
-Download a spaCy model wheel offline and install to a subdirectory:
+1. A spaCy model folder here, for example `models/ner/my_model/` (a folder with
+   `meta.json`, as saved by spaCy's `nlp.to_disk()`).
+2. The installed spaCy package named in `config.yaml` → `ner.package`. This is
+   `en_core_web_sm` 3.8.0, which is installed from `imp.txt`, so nothing needs to
+   be placed here.
+3. Built-in regex patterns only: email, phone, date, money, reference numbers.
 
-    models/ner/en_core_web_sm-3.7.1/
+Only useful labels are kept (PERSON, ORG, GPE, LOC, DATE, MONEY, …), and
+implausible matches are filtered out.
 
-## Option 2: Regex-only (no model needed)
+Settings are in `config/config.yaml`:
 
-Leave this directory empty. The NER engine will automatically use
-its built-in regex patterns for EMAIL, PHONE, DATE, MONEY,
-REFERENCE_NUMBER, and DOCUMENT_ID extraction.
-
-## Configuration (config.yaml)
-
-    ner:
-      enabled: true
-      model_path: "models/ner"
-      backend: "spacy"    # or "regex" to force regex-only
+```yaml
+ner:
+  enabled: true
+  model_path: "models/ner"
+  package: "en_core_web_sm"
+  backend: "spacy"          # "regex" = never use spaCy
+```

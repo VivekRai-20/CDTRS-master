@@ -71,8 +71,14 @@ class AdminService:
     def get_departments(self) -> List[DepartmentModel]:
         return get_repository().admin_get_departments()
 
-    def create_department(self, name: str, code: Optional[str] = None) -> Optional[DepartmentModel]:
-        return get_repository().admin_create_department(name, code)
+    def create_department(
+        self,
+        name: str,
+        code: Optional[str] = None,
+        description: Optional[str] = None,
+        keywords: Optional[str] = None,
+    ) -> Optional[DepartmentModel]:
+        return get_repository().admin_create_department(name, code, description, keywords)
 
     def update_department(self, dept_id: int, payload: Dict[str, Any]) -> Optional[DepartmentModel]:
         return get_repository().admin_update_department(dept_id, payload)

@@ -6,14 +6,14 @@ Unit tests for the classification module.
 
 from __future__ import annotations
 
-import pytest
+import unittest
 
 from classification.rule_classifier import RuleClassifier
 from classification.base_classifier import BaseClassifier
 
 
-class TestRuleClassifier:
-    def setup_method(self):
+class TestRuleClassifier(unittest.TestCase):
+    def setUp(self):
         self.clf = RuleClassifier(config={})
 
     def test_classify_returns_dict(self):
@@ -51,7 +51,7 @@ class TestRuleClassifier:
         assert result["method"] == "RuleClassifier"
 
 
-class TestBaseClassifierInterface:
+class TestBaseClassifierInterface(unittest.TestCase):
     def test_cannot_instantiate_abstract(self):
-        with pytest.raises(TypeError):
+        with self.assertRaises(TypeError):
             BaseClassifier()

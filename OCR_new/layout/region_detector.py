@@ -106,9 +106,9 @@ class RegionDetector:
     def _load_model_if_available(self) -> None:
         """Try to load a local layout model."""
         layout_cfg = self._config.get("layout", {})
-        model_dir = Path(
-            layout_cfg.get("model_path", "models/layout")
-        )
+        model_dir = Path(layout_cfg.get("model_path", "models/layout"))
+        if not model_dir.is_absolute():  # relative to OCR_new, not the current folder
+            model_dir = Path(__file__).resolve().parents[1] / model_dir
 
         model_file = model_dir / "layout_model.pkl"
         if not model_file.exists():

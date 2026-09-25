@@ -18,59 +18,96 @@ paths:
   patterns_file: "extraction/patterns.yaml"
 
 # ---------------------------------------------------------------------------
-# PaddleOCR Settings
+# PaddleOCR Settings  (PaddleOCR 2.8.1 / paddlepaddle 2.6.2 - see requirements.txt)
 # ---------------------------------------------------------------------------
 paddleocr:
-  lang: "en"            # Language code: 'en', 'ch', 'latin', etc.
-  ocr_version: "PP-OCRv5" # PP-OCRv5 uses PP-OCRv5_server_det + en_PP-OCRv5_mobile_rec
-                           # server_det is far superior at finding faint handwriting strokes vs v4 mobile_det
-                           # PP-OCRv6 medium models are NOT optimised for English — keep PP-OCRv5 for English handwriting
-  use_gpu: false        # Set true only if a GPU + CUDA toolkit is available
+  lang: "en"              # Language code: 'en', 'ch', 'latin', etc.
+  ocr_version: "PP-OCRv4" # PaddleOCR 2.x model family (en: PP-OCRv3 detection + PP-OCRv4 recognition)
+  use_gpu: false          # The pinned paddlepaddle build is CPU-only
 
-  # Pipeline component toggles
-  use_textline_orientation: true     # Detects/corrects individual textline orientation (keep true — handles per-line rotation correctly)
-  use_doc_unwarping: false           # Disable UVDoc (causes crashes and distorted handwriting)
-  use_doc_orientation_classify: false# Disable whole-doc orientation (causes false 90/180 rotations on handwriting pages)
+  # Text-line orientation (0 / 180 degrees) classifier.
+  use_textline_orientation: true
 
-  # Text detection parameters tuned for handwriting & cursive strokes
-  #
-  # text_det_limit_side_len: Max side-length before PaddleOCR rescales the image for detection.
-  #   At 300 DPI, an A4 page is ~2480x3508 px.
-  #   NOTE: PP-OCRv5 uses a server_det model (81MB) which uses far more working RAM than
-  #   PP-OCRv4's mobile_det. 3000 caused OOM on pages 4+ due to memory accumulation.
-  #   1920 is the safe limit that keeps ~55% of original resolution without crashing.
-  #   PP-OCRv5 server_det at 1920 still significantly outperforms PP-OCRv4 mobile_det at 1920.
+  # Text detection, tuned for faint handwriting strokes.
+  #   text_det_limit_side_len: pages are scaled so the longest side is at most this.
+  #   text_det_thresh / text_det_box_thresh: lower = keeps fainter text.
+  #   text_det_unclip_ratio: margin around each text box (1.8 merged lines).
   text_det_limit_side_len: 1920
-
-  # text_det_limit_type: Which dimension the side_len limit applies to.
-  #   "max" = limit the longest side (portrait/landscape pages)
   text_det_limit_type: "max"
-
-  # text_det_thresh: pixel-level score threshold for the detection probability map.
-  #   Lower = detects fainter/thinner handwriting strokes (default 0.3).
   text_det_thresh: 0.2
-
-  # text_det_box_thresh: box-level confidence threshold after polygon grouping.
-  #   Lower = keeps more candidate text boxes (default 0.6).
   text_det_box_thresh: 0.4
-
-  # text_det_unclip_ratio: expansion factor applied around each detected text box.
-  #   1.6 gives enough margin for ascenders/descenders without merging adjacent lines
-  #   (1.8 was too aggressive and frequently merged two handwritten lines into one box).
   text_det_unclip_ratio: 1.6
 
-  # Model directories (relative to project root, used when offline local models are provided)
+  # Local model folders (filled once by `python setup_models.py`).
   det_model_dir: "models/paddleocr/det"
   rec_model_dir: "models/paddleocr/rec"
   cls_model_dir: "models/paddleocr/cls"
 
-  # Minimum confidence threshold to keep a recognised text region (0.0 - 1.0).
-  # 0.25 recovers more low-confidence handwritten words (cursive, faint ink, mixed styles).
+  # Minimum confidence to keep a recognised text line (0.0 - 1.0).
   drop_score: 0.25
 
-  # --- PaddleOCR 2.x only (ignored in 3.x) ---
-  # use_angle_cls: true   # Replaced by use_textline_orientation in 3.x
-  # show_log: false       # Removed in 3.x
+  # Memory limits.  Paddle keeps working memory for every input shape it has
+  # seen and never frees it, so the engine limits the shapes it uses:
+  #   det_square_pad  - pages are padded to one of three square sizes
+  #   rec_batch_num   - text lines are read one at a time
+  #   rec_ratio_step  - line widths are rounded up to multiples of 8 x height
+  #   rec_max_ratio   - lines longer than 32 x height are narrowed to fit
+  # Without these a single A4 scan needed more than 6 GB of memory.
+  det_square_pad: true
+  rec_batch_num: 1
+  rec_ratio_step: 8
+  rec_max_ratio: 32
+
+# ---------------------------------------------------------------------------
+# Printed / handwritten detection (ocr/text_type_detector.py)
+# ---------------------------------------------------------------------------
+text_type_detection:
+  enabled: true
+  # A classifier trained on your own labelled lines is used when
+  # <model_path>/classifier.pkl exists (fineTune/training/train.py --task text_type);
+  # otherwise the built-in model is used.
+  model_path: "models/classifiers/text_type"
+
+# ---------------------------------------------------------------------------
+# Handwriting recognition (ocr/handwriting_engine.py, TrOCR)
+# ---------------------------------------------------------------------------
+handwriting:
+  enabled: true
+  # Folder of handwriting models; models/handwriting/active.txt names the one in use.
+  # Base model: python fineTune/download_base_model.py
+  # Your own:   python fineTune/training/train.py --task handwriting
+  model_path: "models/handwriting"
+  device: "cpu"
+  num_beams: 3
+  max_new_tokens: 64
+  # Lines that are HANDWRITTEN, or UNKNOWN with PaddleOCR confidence below
+  # this, are read again by the handwriting model.
+  replace_below_confidence: 0.9
+  # The handwriting reading replaces PaddleOCR's only when it is at least this
+  # confident AND at least as confident as PaddleOCR.
+  min_confidence: 0.5
+  max_lines_per_page: 80
+
+# ---------------------------------------------------------------------------
+# Document classification (classification/)
+# ---------------------------------------------------------------------------
+classification:
+  # Optional classifier trained on your own documents:
+  #   python fineTune/training/train.py --task classification
+  # Used instead of the keyword rules when it is at least this confident.
+  model_path: "models/classifiers/document"
+  min_model_confidence: 0.6
+
+# ---------------------------------------------------------------------------
+# Named-entity recognition (nlp/ner_engine.py)
+# ---------------------------------------------------------------------------
+ner:
+  enabled: true
+  # A spaCy model folder under model_path is used first; otherwise the
+  # installed spaCy package named in `package`; otherwise regex patterns only.
+  model_path: "models/ner"
+  package: "en_core_web_sm"
+  backend: "spacy"          # "regex" = never use spaCy
 
 # ---------------------------------------------------------------------------
 # Image Preprocessing  (each step can be toggled independently)
