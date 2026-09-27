@@ -113,6 +113,9 @@ class DocumentModel:
     # Every department scored against the OCR text, best first:
     # [{"department": name, "department_id": id, "score": float}, ...]
     ranked_departments: List[Dict[str, Any]] = field(default_factory=list)
+    # None = not reported by the server (list views); True once a Director
+    # review exists or the DS confirmed one written on the document.
+    director_review_satisfied: Optional[bool] = None
 
     # ================================================================
     # CONSTRUCTION
@@ -176,6 +179,10 @@ class DocumentModel:
             ranked_departments=[
                 r for r in (_get(data, "ranked_departments") or []) if isinstance(r, dict)
             ],
+            director_review_satisfied=(
+                None if _get(data, "director_review_satisfied") is None
+                else bool(_get(data, "director_review_satisfied"))
+            ),
         )
 
     # ================================================================

@@ -12,8 +12,10 @@ cannot be read, so the intake form can still be submitted manually.
 
 import os
 import re
-from datetime import datetime
-from typing import Any, Dict, Optional
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
+
+from services.date_utils import relative_deadline, to_iso
 
 
 # ---------------------------------------------------------------------------
@@ -47,35 +49,27 @@ def _normalise_priority(raw: str) -> str:
     return "Medium"
 
 
-def _normalise_date(raw: str) -> str:
-    """Converts various date formats (DD/MM/YYYY, MM/DD/YYYY, etc.) to standard YYYY-MM-DD."""
-    if not raw:
-        return datetime.now().strftime("%Y-%m-%d")
-    s = str(raw).strip()
-    if "T" in s:
-        s = s.split("T")[0]
-    formats = [
-        "%Y-%m-%d",
-        "%d/%m/%Y",
-        "%m/%d/%Y",
-        "%d-%m-%Y",
-        "%m-%d-%Y",
-        "%Y/%m/%d",
-        "%d.%m.%Y",
-        "%Y.%m.%d",
-        "%d %B %Y",
-        "%d %b %Y",
-        "%B %d, %Y",
-        "%b %d, %Y",
-        "%d %B, %Y",
-        "%b %d %Y",
-    ]
-    for fmt in formats:
-        try:
-            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
-        except (ValueError, TypeError):
-            continue
-    return s
+def _first(value: Any) -> str:
+    """OCR fields may hold a list of candidates; take the first non-empty."""
+    if isinstance(value, (list, tuple)):
+        for v in value:
+            if v not in (None, ""):
+                return str(v)
+        return ""
+    return "" if value is None else str(value)
+
+
+def _normalise_date(raw: Any) -> str:
+    """A real calendar date as YYYY-MM-DD, or "" when *raw* is not one.
+
+    OCR text is full of date-shaped numbers (reference numbers such as
+    44/88/2026); those are rejected instead of being put in a date field."""
+    s = _first(raw).strip()
+    if not s:
+        return ""
+    if re.match(r"^\d{4}-\d{2}-\d{2}[T ]", s):
+        s = s[:10]
+    return to_iso(s)
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +124,48 @@ def _detect_format(file_path: str, body_text: str = "") -> str:
     if ext in _IMAGE_EXTS:
         return "Image (PNG/JPG)"
     return "Other"
+
+
+# ---------------------------------------------------------------------------
+# Mail attachments (incoming items from the DS mailbox)
+# ---------------------------------------------------------------------------
+_OCR_READABLE = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".docx", ".txt"}
+
+
+def fetch_intake_attachment(message_id: Any) -> Dict[str, Any]:
+    """Download the first readable attachment of a mail item into the local
+    preview cache.  Returns {"file_path", "attachment_names"}; file_path is ""
+    when the mail has no readable attachment or the download failed."""
+    out: Dict[str, Any] = {"file_path": "", "attachment_names": []}
+    if not message_id:
+        return out
+    try:
+        from repositories.provider import get_repository
+        repo = get_repository()
+        attachments = repo.get_intake_attachments(int(message_id)) or []
+    except Exception as exc:
+        print(f"[OCR] could not list attachments of mail {message_id}: {exc}", flush=True)
+        return out
+    out["attachment_names"] = [a.get("file_name") or "" for a in attachments]
+    readable = [
+        a for a in attachments
+        if os.path.splitext(str(a.get("file_name") or ""))[1].lower() in _OCR_READABLE
+    ]
+    if not readable:
+        return out
+    att = readable[0]
+    cache_dir = os.path.join(os.path.expanduser("~"), ".cdtrs", "preview_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    safe = os.path.basename(str(att.get("file_name") or f"attachment_{att.get('id')}"))
+    dest = os.path.join(cache_dir, f"intake_{att.get('id')}_{safe}")
+    try:
+        if not os.path.exists(dest):
+            repo.download_attachment(int(att["id"]), dest)
+        if os.path.exists(dest):
+            out["file_path"] = dest
+    except Exception as exc:
+        print(f"[OCR] could not download attachment {att.get('id')}: {exc}", flush=True)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +234,17 @@ class OCRService:
         mode      = (incoming_item.get("mode")   if incoming_item else None) or "Government Mail"
         body_text = (incoming_item.get("body")   if incoming_item else None) or ""
         today_str = datetime.now().strftime("%Y-%m-%d")
+
+        # A mail item's document is its attachment, kept on the server: bring
+        # the first readable one here so it is OCR'd and previewed like a
+        # manually uploaded file (not just the e-mail body).
+        attachment_names: List[str] = []
+        message_id = (incoming_item or {}).get("intake_message_id")
+        if message_id and not (file_path and os.path.exists(file_path)):
+            fetched = fetch_intake_attachment(message_id)
+            attachment_names = fetched["attachment_names"]
+            if fetched["file_path"]:
+                file_path = fetched["file_path"]
 
         # ---- 1.  Run OCR_new (PaddleOCR) on the file -----------------
         raw_text        = ""
@@ -295,9 +342,22 @@ class OCRService:
             or (os.path.splitext(os.path.basename(file_path))[0] if file_path else "")
         )
 
-        # Date
-        raw_date = ocr_fields.get("date", "")
-        ocr_date = _normalise_date(raw_date) if raw_date else today_str
+        # Received date: the letter's own date when OCR found a real one,
+        # else the day the mail arrived, else today.  A date that is really
+        # the deadline ("Last date: ...") is not the letter's date.
+        raw_date = _first(ocr_fields.get("date"))
+        raw_deadline = _first(ocr_fields.get("deadline"))
+        ocr_date = _normalise_date(raw_date)
+        if ocr_date and raw_deadline and ocr_date == _normalise_date(raw_deadline):
+            ocr_date = ""
+        # A mail item was received when the mail arrived, whatever date the
+        # letter inside carries.
+        mail_date = _normalise_date((incoming_item or {}).get("received_at") or "")
+        if mail_date:
+            ocr_date = mail_date
+        elif not ocr_date and incoming_item:
+            ocr_date = _normalise_date(incoming_item.get("date") or "")
+        ocr_date = ocr_date or today_str
 
         # Priority
         raw_prio = ocr_fields.get("priority", "")
@@ -305,10 +365,17 @@ class OCRService:
         if incoming_item and incoming_item.get("priority"):
             priority = _normalise_priority(str(incoming_item["priority"]))
 
-        # Deadline
-        deadline = ocr_fields.get("deadline", "")
-        if isinstance(deadline, list):
-            deadline = deadline[0] if deadline else ""
+        # Deadline: a real date written in the document, or a relative one
+        # ("reply within 7 days") counted from the received date.  A deadline
+        # before the received date is an OCR misread and is dropped.
+        deadline = _normalise_date(raw_deadline)
+        if not deadline and incoming_item and incoming_item.get("deadline"):
+            deadline = _normalise_date(incoming_item.get("deadline"))
+        if not deadline and combined_text:
+            rel = relative_deadline(combined_text, date.fromisoformat(ocr_date))
+            deadline = rel.isoformat() if rel else ""
+        if deadline and deadline < ocr_date:
+            deadline = ""
 
         # Suggested department from OCR engine
         dept_suggestion = ocr_result.get("department_suggestion") or {}
@@ -420,6 +487,8 @@ class OCRService:
             "director_remark":           remark_text,
             # Housekeeping
             "file_path":                 file_path,
+            "attachment_names":          attachment_names,
+            "body":                      body_text,
         }
 
 

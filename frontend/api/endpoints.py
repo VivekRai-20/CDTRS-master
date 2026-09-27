@@ -25,6 +25,7 @@ class Endpoints:
     INTAKE_SYNC_OUTLOOK = "/intake/sync-outlook"
     INTAKE_MANUAL_UPLOAD = "/intake/manual-upload"
     INTAKE_PROCESS = staticmethod(lambda intake_id: f"/intake/{intake_id}/process")
+    INTAKE_ATTACHMENTS = staticmethod(lambda intake_id: f"/intake/{intake_id}/attachments")
 
     # --- Documents ---
     DOCUMENTS_LIST = "/documents"
@@ -50,6 +51,7 @@ class Endpoints:
     DIRECTOR_REVIEW_START = staticmethod(lambda branch_id: f"/branches/{branch_id}/director-review/start")
     DIRECTOR_REVIEW_SUBMIT = staticmethod(lambda branch_id: f"/branches/{branch_id}/director-review")
     DIRECTOR_REVIEWS = staticmethod(lambda doc_id: f"/documents/{doc_id}/director-reviews")
+    DIRECTOR_REVIEW_EDIT = staticmethod(lambda review_id: f"/director-reviews/{review_id}")
 
     # --- Work items (one person's work) ---
     WORK_ITEMS_MINE = "/work-items/mine"

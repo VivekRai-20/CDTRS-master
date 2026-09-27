@@ -105,6 +105,7 @@ FastAPI backend (backend\, started by run_server.py / start_backend.bat)
 |---|---|
 | `test_full_workflow.py` | Workflow engine end to end, directly against the database in `backend\.env`. |
 | `test_api_workflow.py` | Full HTTP workflow against a running server (default `http://127.0.0.1:8123`). |
+| `test_new_fixes.py` | HTTP checks for the Sept 2026 fixes: confirmed Director instruction opens routing, HOD sees only own department, Director edits a remark, invalid dates refused, intake attachments. |
 | `test_context_audit.py` | Work-context and authorization audit over HTTP (default `http://127.0.0.1:8123`, or `CDTRS_API_URL`). |
 | `test_director_detection.py` | Unit tests for the handwritten Director-instruction detector (`python tests\test_director_detection.py`); no database or OCR models needed. |
 | `test_intranet_mail.py` | Intranet IMAP/SMTP diagnostic; sends an e-mail only with `--send`. |
@@ -312,8 +313,8 @@ Never add `--reload`: it starts a second process and loads the OCR models twice.
 
 1. **Tables**: every missing table of the 23 is created (existing tables are never changed or emptied).
 2. **Old databases**: `CRITICAL` is added to `priority_enum` if missing, and the columns
-   `routing_suggestions.ranked_departments`, `departments.description` and `departments.keywords` are added if
-   missing (`[STARTUP] Added missing column ...` in the window).
+   `routing_suggestions.ranked_departments`, `departments.description`, `departments.keywords` and
+   `director_reviews.edited_at` are added if missing (`[STARTUP] Added missing column ...` in the window).
 3. **Seeding** from `data\seed_data.json`, on every start (`[CDTRS SEED] 15 departments, 17 accounts, ... work contexts.`).
    Seeding only creates what is missing: departments, staff-directory records, accounts and default system
    settings. Work contexts are only given to accounts created in that same run. It never changes existing
@@ -525,8 +526,9 @@ Event types sent over the WebSocket: `DOCUMENT_CREATED`, `DIRECTOR_REVIEW_REQUES
 |---|---|---|---|
 | GET | `/intake` | DS | Messages fetched from the DS mailbox that are not yet processed into documents. |
 | POST | `/intake/sync-outlook` | DS | Sync the DS mailbox now, with the provider `MAIL_CHANNEL` selects (Outlook or intranet, despite the name). Returns `status`, `synced_count`, `ignored_duplicates`, `message`. |
-| POST | `/intake/{message_id}/process` | DS | Turn a mailbox message into a document. A JSON body is required but may be `{}`; its fields are all optional: `title`, `subject`, `description`, `received_date`, `deadline`, `priority`, `source`, `sender_name`, `sender_reference`. The message's attachments move to the document; OCR and the routing suggestion run. **409** if the message was already registered as a document (the message names it). |
-| POST | `/intake/manual-upload` | DS | Register a received file (multipart, see below). 201 with the document. **409** if the same file (same SHA-256) is already the ORIGINAL of an existing document; the message names that document. |
+| POST | `/intake/{message_id}/process` | DS | Turn a mailbox message into a document. A JSON body is required but may be `{}`; its fields are all optional: `title`, `subject`, `description`, `received_date`, `deadline`, `priority`, `source`, `sender_name`, `sender_reference`, and what the desktop intake already read from the attachment: `ocr_text`, `ocr_confidence`, `ocr_fields` (object), `suggested_department_id`, `suggested_employee_id`. The message's attachments move to the document; the OCR result is stored (the attachment is OCR'd on the server only when no `ocr_text` is sent) and the routing suggestion runs. **409** if the message was already registered as a document (the message names it). |
+| GET | `/intake/{message_id}/attachments` | DS | Files that came with a mailbox message, before it is registered (the desktop previews and OCRs the first readable one; download with `/attachments/{id}/download`). |
+| POST | `/intake/manual-upload` | DS | Register a received file (multipart, see below). `received_date` / `deadline` must be real calendar dates (e.g. `2026-09-27` or `27/09/2026`); anything else, such as `44/88/2026`, is refused with **422**. 201 with the document. **409** if the same file (same SHA-256) is already the ORIGINAL of an existing document; the message names that document. |
 | POST | `/intelligence/analyze` | DS | Multipart `file` (+ optional form field `body`): OCR, extracted fields and department suggestion for the intake form. Nothing is stored. |
 | POST | `/intelligence/analyze-text` | DS | JSON `{"text": ...}` (first 200,000 characters): fields and department suggestion for text only, e.g. an e-mail body. Nothing is stored. |
 
@@ -550,7 +552,7 @@ Event types sent over the WebSocket: `DOCUMENT_CREATED`, `DIRECTOR_REVIEW_REQUES
 | GET | `/documents` | Login | Documents visible to the active context, with the caller's own work. |
 | GET | `/documents/inbox` | Login | What the active context must act on now (DS: new, registered, back with DS, finished branches, returned Director reviews; Director: open reviews; HOD: active department branches; Employee/TSO: own active work items). |
 | POST | `/documents` | DS | Register a document from metadata only (JSON, no file). 201. |
-| GET | `/documents/{document_id}` | Doc access | Full document with branches and work items. |
+| GET | `/documents/{document_id}` | Doc access | Full document with branches and work items, limited to what the active context may see (see below). `director_review_satisfied` tells whether HOD / employee / TSO routing is open. |
 | PATCH | `/documents/{document_id}` | DS | Correct metadata: `title`, `subject`, `description`, `received_date`, `deadline`, `source`, `sender_name`, `sender_reference`, `priority`, optional `expected_version`. Every change is written to the history. |
 | POST | `/documents/{document_id}/register` | DS | Confirm the metadata: RECEIVED -> REGISTERED. Repeating it changes nothing. |
 | POST | `/documents/{document_id}/send-to-director` | DS | Open a Director review. Optional `{"expected_version"}`. The document must be registered; only one Director review can be open. 201. |
@@ -558,7 +560,14 @@ Event types sent over the WebSocket: `DOCUMENT_CREATED`, `DIRECTOR_REVIEW_REQUES
 | POST | `/documents/{document_id}/reopen` | DS | `{"reason"}`. |
 | GET | `/documents/{document_id}/history` | Doc access | Workflow events, oldest first. |
 | GET | `/history?limit=500` | Login | Events of all documents visible to the active context, newest first. |
-| GET | `/documents/{document_id}/remarks` | Doc access | All remarks of the document. |
+| GET | `/documents/{document_id}/remarks` | Doc access | Remarks of the document visible to the active context. |
+
+**What each context sees of a document.** The DS and the Director see everything. An HOD sees the document-level
+entries, the Director review, and only the workstreams of their own department (plus any they opened, are the target
+of, or have work in); workstreams, remarks, attachments and history entries of other departments are left out of
+`/documents`, `/documents/{id}`, `/documents/{id}/history`, `/documents/{id}/branches`, `/documents/{id}/remarks`,
+`/documents/{id}/work-items`, `/documents/{id}/attachments` and `/history`. An employee or the TSO sees the
+workstreams they work on.
 
 ### 6.6 Routing (branches) and Director review
 
@@ -572,6 +581,7 @@ Event types sent over the WebSocket: `DOCUMENT_CREATED`, `DIRECTOR_REVIEW_REQUES
 | POST | `/branches/{branch_id}/director-review/start` | Director | Marks the review as Under Director Review. Repeating it changes nothing. |
 | POST | `/branches/{branch_id}/director-review` | Director | `{"remark_text", "expected_version"}`. A remark is required. Saves review number n, returns the branch to the DS, notifies the DS and refreshes the routing suggestion. |
 | GET | `/documents/{document_id}/director-reviews` | Doc access | Every Director review, oldest first. |
+| PATCH | `/director-reviews/{review_id}` | Director (author) | `{"remark_text"}`. The Director who wrote the review corrects its wording. The review keeps its number; `edited_at` is set; the old and new wording go to the history (`DIRECTOR_REMARK_EDITED`), the DS is notified and the routing suggestion is refreshed. Refused on a closed document. |
 
 ### 6.7 Work items
 
@@ -693,7 +703,10 @@ rejected with HTTP 409 naming that document; adding the same file twice to one d
   attachment OCR_new can read: .pdf .png .jpg .jpeg .tif .tiff .bmp .webp .docx .txt); otherwise the title
   (engine `FALLBACK_METADATA`).
 - Results: OCR text and confidence (`document_ocr`), extracted fields (`document_extracted_fields`, stored in upper
-  case), Director instruction detection, and a fresh routing suggestion. Failures are stored as FAILED with the error
+  case), Director instruction detection, and a fresh routing suggestion. `DATE` / `DEADLINE` are only taken when
+  they are real calendar dates (`OCR_new/extraction/date_utils.py`): a reference number such as `44/88/2026` or an
+  impossible date such as `31/02/2026` is skipped and the next candidate tried. "Last date / due date / reply by /
+  on or before ..." dates are deadlines, not the letter's date. Failures are stored as FAILED with the error
   and never block registration.
 - Re-running OCR replaces unverified values only; values the DS verified are kept.
 - If the PaddleOCR models are missing the error says to run `python OCR_new/setup_models.py` once.
@@ -706,7 +719,9 @@ rejected with HTTP 409 naming that document; adding the same file twice to one d
   description; an extracted "Department" field; a named staff member of the department (0.6); and the **Routing
   keywords** the Admin sets per department in "Department Configuration". Configured keyword hits score **0.55 /
   0.75 / 0.9** for 1 / 2 / 3 or more hits. Keywords of 3 characters or less (for example `HR`, `IT`) only count as
-  whole words written in UPPER CASE in the document.
+  whole words written in UPPER CASE in the document. Distinctive words of the department's **Description** (4+
+  letters, common words left out) also count: 2 / 3-4 / 5 or more of them in the document score **0.25 / 0.35 /
+  0.5**. The Admin screen requires a description for every department it saves.
 - **Semantic score**: similarity of the text to a department profile built from name, code, **Description**,
   **Keywords**, topic words and staff designations, using OCR_new's local embedding model (all-MiniLM-L6-v2).
 - Combined: `1 - (1 - keyword) * (1 - semantic)`. A department is suggested only if the score is at least 0.3 and
@@ -733,7 +748,11 @@ through `PUT /admin/departments/{id}`, or once for all departments with `import_
 5. Exception: when OCR finds a handwritten Director instruction on the letter it sets the fields
    `PRIOR_DIRECTOR_REVIEW_DETECTED = true` and `DIRECTOR_HANDWRITTEN_REMARK`. If the DS verifies
    `PRIOR_DIRECTOR_REVIEW_DETECTED` with `true` (also accepted: `1`, `yes`, `detected`, `confirmed`), the gate counts as
-   passed. The extracted value alone is not enough - it must be DS-verified.
+   passed. The extracted value alone is not enough - it must be DS-verified. The desktop intake screen shows the
+   instruction OCR found (editable) with a tick box "The Director has already reviewed this document"; when it is
+   ticked, registering verifies both fields, the confirmation is written to the history
+   (`PRIOR_DIRECTOR_REVIEW_CONFIRMED`), the confirmed instruction steers the routing suggestion, and the routing
+   dialog offers HODs, employees and the TSO straight away.
 
 ---
 
@@ -951,6 +970,7 @@ In a second Command Prompt:
 ```bat
 cd /d C:\CDTRS-main\backend
 python tests/test_api_workflow.py
+python tests/test_new_fixes.py
 python tests/test_context_audit.py
 
 cd /d C:\CDTRS-main\frontend

@@ -510,6 +510,7 @@ class DirectorReviewModel:
     review_no: int = 1
     requested_at: Optional[str] = None
     created_at: Optional[str] = None
+    edited_at: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Any) -> "DirectorReviewModel":
@@ -523,13 +524,15 @@ class DirectorReviewModel:
             review_no=_get(data, "review_no") or 1,
             requested_at=_get(data, "requested_at"),
             created_at=_get(data, "created_at"),
+            edited_at=_get(data, "edited_at"),
         )
 
     @property
     def header(self) -> str:
+        edited = f" (edited {_fmt_datetime(self.edited_at)})" if self.edited_at else ""
         return (
             f"Director Review #{self.review_no} - "
-            f"{self.director_name or 'Director'} - {_fmt_datetime(self.created_at)}"
+            f"{self.director_name or 'Director'} - {_fmt_datetime(self.created_at)}{edited}"
         )
 
 

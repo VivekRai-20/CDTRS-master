@@ -171,6 +171,11 @@ class RoutingService:
         """
         return get_repository().submit_director_review(branch_id, remark_text, expected_version)
 
+    def edit_director_review(self, review_id: int, remark_text: str) -> Optional[DirectorReviewModel]:
+        """The Director corrects the wording of their own review.  The old
+        wording stays in the document history and the DS is notified."""
+        return get_repository().edit_director_review(review_id, remark_text)
+
     # =========================================================
     # ROUTING INTELLIGENCE (advisory)
     # =========================================================

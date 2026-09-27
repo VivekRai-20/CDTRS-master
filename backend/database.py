@@ -73,6 +73,7 @@ _ADDED_COLUMNS = [
     ("routing_suggestions", "ranked_departments", "JSON"),
     ("departments", "description", "TEXT"),
     ("departments", "keywords", "TEXT"),
+    ("director_reviews", "edited_at", "TIMESTAMP"),
 ]
 
 

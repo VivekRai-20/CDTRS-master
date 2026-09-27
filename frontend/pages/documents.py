@@ -42,6 +42,7 @@ class DocumentsPage(QWidget):
         super().__init__()
         self.user_role = user_role
         self.documents: List[DocumentModel] = []
+        self._filtered: List[DocumentModel] = []
         self._expanded_ids = set()
         self._build()
         self._connect_events()
@@ -151,6 +152,22 @@ class DocumentsPage(QWidget):
         )
         refresh.clicked.connect(self.load_documents)
         filters.addWidget(refresh)
+
+        # DS: print / save as PDF the workflow of every listed document.
+        self.print_all_btn = QPushButton("🖨 Print Workflows")
+        self.print_all_btn.setMinimumHeight(38)
+        self.print_all_btn.setToolTip(
+            "Print or save as PDF the complete workflow of every document in the list "
+            "(use the filters to narrow it down)."
+        )
+        self.print_all_btn.setStyleSheet(
+            "QPushButton { background-color: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; "
+            "font-weight: 600; padding: 6px 14px; border-radius: 6px; }"
+            "QPushButton:hover { background-color: #DBEAFE; }"
+        )
+        self.print_all_btn.clicked.connect(self.print_listed_workflows)
+        self.print_all_btn.setVisible(False)
+        filters.addWidget(self.print_all_btn)
 
         layout.addLayout(filters)
 
@@ -834,9 +851,53 @@ class DocumentsPage(QWidget):
         )
         actions.addWidget(workflow_btn)
 
+        if self._is_ds():
+            print_btn = QPushButton("🖨 Print Workflow")
+            print_btn.setMinimumHeight(34)
+            print_btn.setStyleSheet(
+                "QPushButton { background: #F8FAFC; color: #0F172A; "
+                "border: 1px solid #CBD5E1; border-radius: 6px; "
+                "padding: 6px 15px; font-weight: 700; font-size: 10px; }"
+                "QPushButton:hover { background: #F1F5F9; }"
+            )
+            print_btn.clicked.connect(lambda _, d=doc: self.print_workflows([d]))
+            actions.addWidget(print_btn)
+
         grid.addLayout(actions, 2, 0, 1, 3)
 
         return content
+
+    # ------------------------------------------------------------------
+    # Printing (DS)
+    # ------------------------------------------------------------------
+
+    def _is_ds(self) -> bool:
+        try:
+            return (context_manager.active_context_type(self.user_role) or "").upper() == "DS"
+        except Exception:
+            return str(self.user_role or "").upper() == "DS"
+
+    def print_workflows(self, docs: List[DocumentModel]) -> None:
+        from components.workflow_print import print_workflows
+
+        def load_full(doc: DocumentModel) -> DocumentModel:
+            return document_service.get_document(doc.id) or doc
+
+        print_workflows(self, docs, loader=load_full)
+
+    def print_listed_workflows(self) -> None:
+        docs = list(self._filtered or [])
+        if len(docs) > 50:
+            reply = QMessageBox.question(
+                self,
+                "Print Workflows",
+                f"{len(docs)} documents are listed. Printing all of them may take a while "
+                "and produce many pages.\n\nContinue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        self.print_workflows(docs)
 
     def _toggle_document(self, doc: DocumentModel) -> None:
         if doc.id in self._expanded_ids:
@@ -876,6 +937,7 @@ class DocumentsPage(QWidget):
             "branch and individual work item at its own stage."
         )
 
+        self.print_all_btn.setVisible(self._is_ds())
         self._refresh_summary(self.documents)
         self.apply_filters()
 
@@ -989,6 +1051,7 @@ class DocumentsPage(QWidget):
             results.append(doc)
 
         results = self._sort_documents(results)
+        self._filtered = list(results)
 
         # Rebuild cards.
         while self.card_layout.count():

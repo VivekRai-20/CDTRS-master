@@ -128,17 +128,27 @@ class RoutingDialog(_BaseDialog):
         )
         self.document = document
         self.rows: List[Dict[str, Any]] = []
-        
-        if getattr(self.document, 'is_director_instruction', False) and not self.document.director_reviews:
+
+        # The server only lets work go to an HOD / employee / TSO once the
+        # Director review is satisfied: a Director review exists, or the DS
+        # confirmed a Director instruction OCR found on the document.  Offer
+        # exactly what the server will accept.
+        satisfied = getattr(self.document, "director_review_satisfied", None)
+        if satisfied is None:
+            satisfied = bool(self.document.director_reviews)
+        self.director_review_satisfied = bool(satisfied)
+        if not self.director_review_satisfied:
             self.BRANCH_CHOICES = [
                 ("Director - review & remark", "DIRECTOR"),
             ]
         else:
+            # The Director has already reviewed: send the work out.  (A new
+            # Director review can still be requested on its own.)
             self.BRANCH_CHOICES = [
-                ("Director - review & remark", "DIRECTOR"),
                 ("Department HOD", "DEPARTMENT"),
                 ("Employee (direct, no HOD)", "EMPLOYEE"),
                 ("TSO", "TSO"),
+                ("Director - review & remark", "DIRECTOR"),
             ]
 
         self._departments = []
@@ -154,6 +164,20 @@ class RoutingDialog(_BaseDialog):
         self._build()
 
     def _build(self) -> None:
+        if not self.director_review_satisfied:
+            gate = QLabel(
+                "This document has not been reviewed by the Director yet, so it goes to the "
+                "Director first. If the Director's instruction is already written on the "
+                "document, confirm it on the document screen (OCR: Director Instruction Found) "
+                "and you can route it straight to departments."
+            )
+            gate.setWordWrap(True)
+            gate.setStyleSheet(
+                "background-color: #FEF3C7; border-left: 3px solid #D97706; padding: 8px 10px; "
+                "color: #78350F; font-size: 11px; border-radius: 3px;"
+            )
+            self._root.addWidget(gate)
+
         if self.document.latest_director_remark:
             hint = QLabel(f"Latest Director remark: “{self.document.latest_director_remark}”")
             hint.setWordWrap(True)
@@ -392,7 +416,9 @@ class RoutingDialog(_BaseDialog):
         remove_btn.clicked.connect(remove_row)
 
         if prefill and self.document.suggested_department_id:
-            type_combo.setCurrentIndex(1)
+            dept_idx = type_combo.findData("DEPARTMENT")
+            if dept_idx >= 0:
+                type_combo.setCurrentIndex(dept_idx)
         refresh_targets()
 
         self.rows_layout.insertWidget(self.rows_layout.count() - 1, card)

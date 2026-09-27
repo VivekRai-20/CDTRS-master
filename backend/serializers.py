@@ -90,6 +90,7 @@ def director_review(r: models.DirectorReview) -> schemas.DirectorReviewResponse:
         review_no=r.review_no,
         requested_at=r.requested_at,
         created_at=r.created_at,
+        edited_at=getattr(r, "edited_at", None),
     )
 
 
@@ -229,10 +230,24 @@ def branch_summary(b: models.DocumentBranch) -> schemas.BranchSummary:
 # DOCUMENTS
 # =========================================================
 
-def _base_document_fields(d: models.Document) -> Dict[str, Any]:
-    open_items = sum(
-        1 for w in d.work_items if w.stage not in workflow.TERMINAL_WORK_STAGES
+def _base_document_fields(
+    d: models.Document,
+    scope: Optional["workflow.DocumentScope"] = None,
+) -> Dict[str, Any]:
+    scope = scope or workflow.FULL_SCOPE
+    branches = scope.branches(d.branches)
+    work_items = (
+        list(d.work_items) if scope.is_full
+        else [w for b in branches for w in b.work_items]
     )
+    open_items = sum(
+        1 for w in work_items if w.stage not in workflow.TERMINAL_WORK_STAGES
+    )
+    people: List[str] = []
+    for w in work_items:
+        name = w.assignee.full_name if w.assignee else None
+        if name and name not in people:
+            people.append(name)
     return dict(
         doc_id=d.doc_id,
         reference_no=d.reference_no,
@@ -249,9 +264,9 @@ def _base_document_fields(d: models.Document) -> Dict[str, Any]:
         deadline_state=workflow.overdue_state(d.deadline),
         ocr_status=d.ocr_status,
         version=d.version,
-        branch_summaries=[branch_summary(b) for b in d.branches],
-        people_involved=d.people_involved,
-        active_branch_count=len(d.active_branches),
+        branch_summaries=[branch_summary(b) for b in branches],
+        people_involved=people,
+        active_branch_count=sum(1 for b in branches if b.is_active),
         open_work_item_count=open_items,
         latest_director_remark=d.latest_director_remark,
         has_open_director_review=d.open_director_review is not None,
@@ -264,8 +279,9 @@ def _base_document_fields(d: models.Document) -> Dict[str, Any]:
 def document_list(
     d: models.Document,
     my_work_items: Optional[List[models.WorkItem]] = None,
+    scope: Optional["workflow.DocumentScope"] = None,
 ) -> schemas.DocumentListResponse:
-    fields = _base_document_fields(d)
+    fields = _base_document_fields(d, scope)
     fields["my_work_items"] = [
         work_item(w, include_progress=False) for w in (my_work_items or [])
     ]
@@ -276,8 +292,13 @@ def document_detail(
     db: Session,
     d: models.Document,
     include_history: bool = True,
+    scope: Optional["workflow.DocumentScope"] = None,
 ) -> schemas.DocumentDetailResponse:
-    fields = _base_document_fields(d)
+    """Full document view.  *scope* limits workstreams, remarks, attachments
+    and history to what the caller's active context may see (an HOD sees
+    their own department's workstreams, not every department's)."""
+    scope = scope or workflow.FULL_SCOPE
+    fields = _base_document_fields(d, scope)
     suggestion = d.routing_suggestion
     fields.update(
         mode=d.mode,
@@ -286,11 +307,11 @@ def document_detail(
         registered_at=d.registered_at,
         closed_by_user_id=d.closed_by_user_id,
         closure_remark=d.closure_remark,
-        branches=[branch(b) for b in d.branches],
-        remarks=[remark(r) for r in d.remarks],
+        branches=[branch(b) for b in scope.branches(d.branches)],
+        remarks=[remark(r) for r in scope.remarks(d.remarks)],
         director_reviews=[director_review(r) for r in d.director_reviews],
-        attachments=[attachment(a) for a in d.attachments],
-        history=[event(e) for e in workflow.document_history(db, d.doc_id)] if include_history else [],
+        attachments=[attachment(a) for a in scope.attachments(d.attachments)],
+        history=[event(e) for e in workflow.document_history(db, d.doc_id, scope)] if include_history else [],
         suggested_department_id=suggestion.suggested_department_id if suggestion else None,
         suggested_department_name=suggestion.suggested_department_name if suggestion else None,
         suggested_employee_id=suggestion.suggested_employee_id if suggestion else None,
@@ -299,6 +320,7 @@ def document_detail(
         routing_reason=suggestion.routing_reason if suggestion else None,
         is_director_instruction=bool(suggestion.is_director_instruction) if suggestion else False,
         ranked_departments=(suggestion.ranked_departments or []) if suggestion else [],
+        director_review_satisfied=workflow.director_review_satisfied(db, d),
     )
     return schemas.DocumentDetailResponse(**fields)
 
@@ -308,10 +330,14 @@ def documents_with_my_work(
     docs: List[models.Document],
     user_id: Optional[int],
     context_membership_id: Optional[int],
+    user: Optional[models.User] = None,
 ) -> List[schemas.DocumentListResponse]:
     """List view that also carries the caller's own work items, so task pages
     can show stage / latest progress / deadline per row."""
     out: List[schemas.DocumentListResponse] = []
+    context = (
+        workflow.resolve_context(db, user, context_membership_id) if user is not None else None
+    )
     for d in docs:
         mine = [
             w for w in d.work_items
@@ -322,7 +348,11 @@ def documents_with_my_work(
                 or w.assigned_to_context_membership_id == context_membership_id
             )
         ]
-        out.append(document_list(d, mine))
+        scope = (
+            workflow.document_scope(db, user, context_membership_id, d, context=context)
+            if user is not None else None
+        )
+        out.append(document_list(d, mine, scope))
     return out
 
 

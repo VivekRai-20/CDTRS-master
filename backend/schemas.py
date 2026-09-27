@@ -191,6 +191,13 @@ class IntakeProcessRequest(BaseModel):
     source: Optional[str] = None
     sender_name: Optional[str] = None
     sender_reference: Optional[str] = None
+    # What the desktop intake already read from the mail attachment, so the
+    # server does not OCR it a second time, and the DS's routing choice.
+    ocr_text: Optional[str] = None
+    ocr_confidence: Optional[float] = None
+    ocr_fields: Optional[Dict[str, Any]] = None
+    suggested_department_id: Optional[int] = None
+    suggested_employee_id: Optional[int] = None
 
 
 class IntakeResponse(BaseModel):
@@ -442,6 +449,11 @@ class DirectorReviewRequest(BaseModel):
     expected_version: Optional[int] = None
 
 
+class DirectorReviewEditRequest(BaseModel):
+    """The Director corrects the wording of a review they already wrote."""
+    remark_text: str
+
+
 class DirectorReviewResponse(BaseModel):
     id: int
     document_id: int
@@ -452,6 +464,7 @@ class DirectorReviewResponse(BaseModel):
     review_no: int = 1
     requested_at: Optional[datetime] = None
     created_at: datetime
+    edited_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -580,6 +593,9 @@ class DocumentDetailResponse(DocumentListResponse):
     routing_reason: Optional[str] = None
     is_director_instruction: bool = False
     ranked_departments: Optional[List[Dict[str, Any]]] = None
+    # True once a Director review exists, or the DS confirmed a Director
+    # instruction OCR found on the document: HOD / employee / TSO routing is open.
+    director_review_satisfied: bool = False
 
 
 class CloseRequest(BaseModel):

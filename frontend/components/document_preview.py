@@ -739,7 +739,11 @@ class DocumentPreview(QFrame):
                 ".jpg",
                 ".jpeg",
                 ".bmp",
-            ):
+                ".tif",
+                ".tiff",
+                ".webp",
+                ".gif",
+            ) and not QPixmap(file_path).isNull():
 
                 self.pdf_toolbar.setVisible(
                     False
@@ -808,6 +812,22 @@ class DocumentPreview(QFrame):
         self.pdf_toolbar.setVisible(
             False
         )
+
+        # Text supplied by the caller (an e-mail body, or the text OCR read
+        # from a file type that cannot be drawn here, such as DOCX).
+        preview_text = (
+            self.document.get("preview_text")
+            if isinstance(self.document, dict)
+            else None
+        )
+        if preview_text:
+            self.stack.setCurrentIndex(2)
+            self.format_badge.setText(
+                (os.path.splitext(file_path)[1].replace(".", "").upper() or "TEXT")
+                if file_path else "TEXT"
+            )
+            self.text_browser.setPlainText(str(preview_text))
+            return
 
         self.stack.setCurrentIndex(
             3

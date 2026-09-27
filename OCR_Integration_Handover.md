@@ -41,7 +41,7 @@ Mailbox sync ─────────►  DS processes intake message ─┘ 
 | Task | Status | Where |
 |---|---|---|
 | **A** Ranked department suggestions in the routing dialog | Done | `RoutingDialog` in `frontend/components/routing_dialogs.py` shows the top 5 as clickable chips |
-| **B** DS verification of Director remarks found by OCR | Done | `frontend/components/document_viewer.py` (DS only): editable remark, confirmation checkbox, **Verify & Save**. It is deliberately not on the intake page, which must never bypass Director review |
+| **B** DS verification of Director remarks found by OCR | Done | On the intake page (editable instruction + tick box "The Director has already reviewed this document", verified when the document is registered) and in `frontend/components/document_viewer.py` (DS only, **Verify & Save**). Only a DS confirmation opens routing without a new Director review; the confirmation is logged in the history |
 | **C** Workflow gate trusts only verified values | Done | `backend/workflow.py` `_ocr_prior_director_review_detected` uses `verified_value` only. Re-running OCR keeps DS-verified values |
 | **D** Department descriptions and keywords for routing | Done | see below |
 | **E** Frontend intake uses OCR_new (server-side) | Done | `OCR_old/` removed |

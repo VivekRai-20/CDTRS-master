@@ -64,6 +64,14 @@ class DirectorReviewedPage(QWidget):
 
         controls = QHBoxLayout()
         controls.addStretch()
+        edit_btn = QPushButton("Edit Remark")
+        edit_btn.setStyleSheet(
+            "background-color: #F5F3FF; color: #5B21B6; border: 1px solid #DDD6FE; "
+            "font-weight: 600; padding: 7px 15px; border-radius: 4px;"
+        )
+        edit_btn.setToolTip("Correct the wording of the selected review. The earlier wording is kept in the history.")
+        edit_btn.clicked.connect(self.edit_remark)
+        controls.addWidget(edit_btn)
         open_btn = QPushButton("Open Document")
         open_btn.setStyleSheet(
             "background-color: #F8FAFC; color: #0F172A; border: 1px solid #CBD5E1; "
@@ -120,7 +128,10 @@ class DirectorReviewedPage(QWidget):
             self._set(row, 1, doc.subject or doc.title)
             self._set(row, 2, f"#{review.review_no}", color="#7C3AED", bold=True)
             self._set(row, 3, review.remark_text, tooltip=review.remark_text)
-            self._set(row, 4, review.created_at or "-")
+            written = str(review.created_at or "-")[:16].replace("T", " ")
+            if review.edited_at:
+                written += f"  (edited {str(review.edited_at)[:16].replace('T', ' ')})"
+            self._set(row, 4, written)
             self._set(row, 5, doc.lifecycle_label, color=doc.lifecycle_color, bold=True)
 
     def _set(self, row, col, text, color=None, bold=False, tooltip=None) -> None:
@@ -137,6 +148,56 @@ class DirectorReviewedPage(QWidget):
         if tooltip:
             cell.setToolTip(tooltip)
         self.table.setItem(row, col, cell)
+
+    def edit_remark(self) -> None:
+        row = self.table.currentRow()
+        if not (0 <= row < len(self.rows)):
+            QMessageBox.information(self, "My Reviews", "Select a review first.")
+            return
+        doc, review = self.rows[row]
+        if doc.is_closed:
+            QMessageBox.information(
+                self, "Edit Remark", "This document is closed; its reviews can no longer be edited."
+            )
+            return
+        try:
+            from services.auth_service import auth_service
+            user = auth_service.get_current_user()
+            if user and review.director_user_id and review.director_user_id != user.id:
+                QMessageBox.information(
+                    self, "Edit Remark", "Only the Director who wrote this review can edit it."
+                )
+                return
+        except Exception:
+            pass
+
+        from components.routing_dialogs import RemarkDialog
+        from services.routing_service import routing_service
+
+        dialog = RemarkDialog(
+            f"Edit Director Review #{review.review_no}",
+            f"{doc.reference} - {doc.subject or doc.title}\n"
+            "Correct the wording of your remark. The earlier wording is kept in the "
+            "document history and the DS is told about the change.",
+            self,
+            prefill=review.remark_text,
+        )
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+        new_text = dialog.get_text()
+        if new_text == (review.remark_text or "").strip():
+            return
+        try:
+            routing_service.edit_director_review(review.id, new_text)
+        except Exception as exc:
+            QMessageBox.warning(self, "Edit Remark", f"Could not update the remark.\n{exc}")
+            return
+        QMessageBox.information(self, "Edit Remark", "Remark updated. The DS has been notified.")
+        try:
+            from services.event_bus import event_bus
+            event_bus.document_updated.emit(doc.id)
+        except Exception:
+            self.load()
 
     def open_document(self) -> None:
         row = self.table.currentRow()

@@ -160,6 +160,26 @@ def _tokens(value: Any) -> List[str]:
     return [t for t in _norm_text(value).split() if t != "and"]
 
 
+#: Words common in any department description; they say nothing about which
+#: department a document belongs to.
+_DESCRIPTION_STOPWORDS = _DEPT_STOPWORDS | {
+    "with", "from", "into", "that", "this", "these", "those", "such", "other", "others",
+    "all", "any", "are", "is", "its", "their", "our", "including", "include", "includes",
+    "related", "relating", "matters", "matter", "work", "works", "handles", "handling",
+    "handle", "manages", "managing", "management", "responsible", "responsibility",
+    "general", "various", "documents", "document", "letters", "letter", "requests",
+    "request", "issues", "issue", "also", "etc", "like", "such", "over", "under",
+}
+
+
+def _description_terms(dept: models.Department) -> set:
+    """Distinctive words of the department's description (Admin > Department
+    Configuration), used as a light keyword signal next to the semantic
+    comparison with the full description."""
+    tokens = _tokens(getattr(dept, "description", None) or "")
+    return {t for t in tokens if len(t) >= 4 and t not in _DESCRIPTION_STOPWORDS}
+
+
 def _significant(tokens: List[str]) -> List[str]:
     return [t for t in tokens if t not in _DEPT_STOPWORDS and len(t) >= 3]
 
@@ -276,6 +296,20 @@ def _keyword_score(dept: models.Department, text_tokens: List[str], text_token_s
     if topics:
         hits = sum(1 for w in topics if w in text_token_set)
         score = max(score, (0.0, 0.2, 0.45, 0.65)[hits] if hits < 4 else 0.8)
+    # Words of the department's description found in the document: several
+    # distinct ones together point at the department (a single shared word
+    # does not).
+    desc_terms = _description_terms(dept)
+    if desc_terms:
+        desc_hits = sum(
+            1 for t in desc_terms if _token_found(t, text_token_set, text_prefixes)
+        )
+        if desc_hits >= 5:
+            score = max(score, 0.5)
+        elif desc_hits >= 3:
+            score = max(score, 0.35)
+        elif desc_hits == 2:
+            score = max(score, 0.25)
     # Keywords configured for this department count for more than the
     # generic topic words: they were chosen for this organisation.
     configured = _department_keywords(dept)
@@ -490,6 +524,31 @@ def verify_extracted_field(
     return field
 
 
+_TRUE_VALUES = {"true", "1", "yes", "detected", "confirmed"}
+
+
+def _confirmed_prior_director_remark(db: Session, doc_id: int) -> Optional[str]:
+    """Director instruction found on the document by OCR, once the DS has
+    confirmed it is a real prior Director review."""
+    rows = {
+        f.field_name: f
+        for f in db.query(models.DocumentExtractedField).filter(
+            models.DocumentExtractedField.document_id == doc_id,
+            models.DocumentExtractedField.field_name.in_(
+                ["PRIOR_DIRECTOR_REVIEW_DETECTED", "DIRECTOR_HANDWRITTEN_REMARK"]
+            ),
+        ).all()
+    }
+    flag = rows.get("PRIOR_DIRECTOR_REVIEW_DETECTED")
+    if not flag or str(flag.verified_value or "").strip().lower() not in _TRUE_VALUES:
+        return None
+    remark = rows.get("DIRECTOR_HANDWRITTEN_REMARK")
+    if not remark:
+        return None
+    text = (remark.verified_value or remark.extracted_value or "").strip()
+    return text or None
+
+
 def generate_routing_suggestion(
     db: Session,
     doc_id: int,
@@ -517,11 +576,13 @@ def generate_routing_suggestion(
     reason = "Selected by the DS during document intake." if (suggested_dept_id or suggested_emp_id) else "Insufficient content to determine department."
     source = RoutingSource.DOCUMENT_CONTENT if (suggested_dept_id or suggested_emp_id) else RoutingSource.SOURCE_METADATA
     is_director_instruction = False
-    
-    # Check Director Remark
-    if include_director_remark and doc.latest_director_remark:
-        remark_lower = doc.latest_director_remark.lower()
-        remark_tokens = _tokens(doc.latest_director_remark)
+
+    # Check Director Remark: the latest Director review, or else a Director
+    # instruction written on the document itself that the DS confirmed.
+    director_text = doc.latest_director_remark or _confirmed_prior_director_remark(db, doc_id)
+    if include_director_remark and director_text:
+        remark_lower = director_text.lower()
+        remark_tokens = _tokens(director_text)
         employees = get_employees(db)
         for emp in employees:
             if emp.full_name and len(emp.full_name.strip()) > 3 and emp.full_name.lower() in remark_lower:
@@ -540,7 +601,7 @@ def generate_routing_suggestion(
                 code = (dept.code or "").strip()
                 code_hit = bool(code) and re.search(
                     rf"(?<![A-Za-z0-9]){re.escape(code)}(?![A-Za-z0-9])",
-                    doc.latest_director_remark,
+                    director_text,
                     0 if len(code) < 3 else re.IGNORECASE,
                 ) is not None
                 if _phrase_in(_tokens(dept.name), remark_tokens) or code_hit:

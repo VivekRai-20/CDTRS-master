@@ -807,6 +807,8 @@ class DirectorReview(Base):
     document_version = Column(Integer, default=1, nullable=False)
     requested_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
+    # Set when the Director corrects the wording later (history keeps the old text).
+    edited_at = Column(DateTime, nullable=True)
 
     document = relationship("Document", back_populates="director_reviews")
     branch   = relationship("DocumentBranch", foreign_keys=[branch_id])

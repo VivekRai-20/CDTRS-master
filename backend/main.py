@@ -37,6 +37,7 @@ except Exception:
 
 import asyncio
 import json
+import re
 import os
 import sys
 import threading
@@ -94,25 +95,38 @@ API_V1 = "/api/v1"
 # HELPERS
 # =========================================================
 
-def _parse_flexible_date(value: Optional[str]) -> _date:
-    if not value:
+_DATE_FORMATS = (
+    "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%m-%d-%Y", "%Y/%m/%d",
+    "%d.%m.%Y", "%Y.%m.%d", "%d %B %Y", "%d %b %Y", "%B %d, %Y", "%b %d, %Y",
+)
+
+
+def _parse_flexible_date(value: Optional[str], label: str = "Received date") -> _date:
+    """A real calendar date in any common layout.  Empty means today.  Text
+    that only looks like a date (e.g. "44/88/2026" read by OCR from a
+    reference number) is rejected instead of being stored."""
+    if not value or not str(value).strip():
         return datetime.utcnow().date()
-    s = str(value).strip().split("T")[0]
-    for fmt in (
-        "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%m-%d-%Y", "%Y/%m/%d",
-        "%d.%m.%Y", "%Y.%m.%d", "%d %B %Y", "%d %b %Y", "%B %d, %Y", "%b %d, %Y",
-    ):
+    s = str(value).strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}[T ]", s):
+        s = s[:10]  # an ISO timestamp: keep the date part
+    for fmt in _DATE_FORMATS:
         try:
-            return datetime.strptime(s, fmt).date()
+            parsed = datetime.strptime(s, fmt).date()
         except (ValueError, TypeError):
             continue
-    return datetime.utcnow().date()
+        if 1900 <= parsed.year <= 2100:
+            return parsed
+    raise HTTPException(
+        status_code=422,
+        detail=f"{label} '{value}' is not a valid date. Use YYYY-MM-DD.",
+    )
 
 
-def _optional_date(value: Optional[str]) -> Optional[_date]:
+def _optional_date(value: Optional[str], label: str = "Deadline") -> Optional[_date]:
     if not value or not str(value).strip():
         return None
-    return _parse_flexible_date(value)
+    return _parse_flexible_date(value, label)
 
 
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "./uploads"))
@@ -313,6 +327,17 @@ def get_active_context(
 
 def _context_id(ctx: Optional[models.WorkContextMembership]) -> Optional[int]:
     return ctx.id if ctx else None
+
+
+def _detail(
+    db: Session,
+    doc: models.Document,
+    user: models.User,
+    ctx: Optional[models.WorkContextMembership],
+) -> schemas.DocumentDetailResponse:
+    """Document detail limited to what the caller's active context may see."""
+    scope = workflow.document_scope(db, user, _context_id(ctx), doc, context=ctx)
+    return serializers.document_detail(db, doc, scope=scope)
 
 
 def _handle(exc: Exception) -> HTTPException:
@@ -522,6 +547,30 @@ def list_intake(
     return crud.get_incoming_messages(db)
 
 
+@app.get(
+    f"{API_V1}/intake/{{message_id}}/attachments",
+    response_model=List[schemas.AttachmentResponse],
+    tags=["Intake"],
+)
+def list_intake_attachments(
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+    ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
+):
+    """Files that arrived with a mail item, before it is registered, so the DS
+    can preview and OCR them on the intake screen."""
+    if not ctx or ctx.context_type != WorkContextType.DS:
+        raise HTTPException(status_code=403, detail="Intake is handled in the DS context.")
+    atts = (
+        db.query(models.Attachment)
+        .filter(models.Attachment.source_message_id == message_id)
+        .order_by(models.Attachment.id.asc())
+        .all()
+    )
+    return [serializers.attachment(a) for a in atts]
+
+
 @app.post(f"{API_V1}/intake/sync-outlook", tags=["Intake"])
 def sync_outlook(
     db: Session = Depends(get_db),
@@ -646,7 +695,7 @@ async def manual_upload(
 
     await crud.event_manager.broadcast("DOCUMENT_CREATED", document_id=doc.doc_id, user_id=current_user.id)
     db.refresh(doc)
-    return serializers.document_detail(db, doc)
+    return _detail(db, doc, current_user, ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -718,10 +767,23 @@ async def process_intake(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if not doc:
         raise HTTPException(status_code=404, detail="Intake item not found.")
-    await run_in_threadpool(intelligence.trigger_ocr_processing, db, doc.doc_id)
+    confidence = payload.ocr_confidence
+    if confidence is not None and confidence > 1.0:
+        confidence = confidence / 100.0
+    # The desktop intake already OCR'd the mail attachment: store that result
+    # (and the DS's department / staff choice) instead of reading it again.
+    await run_in_threadpool(
+        intelligence.trigger_ocr_processing,
+        db, doc.doc_id,
+        intake_ocr_text=payload.ocr_text,
+        intake_ocr_confidence=confidence,
+        preferred_dept_id=payload.suggested_department_id,
+        preferred_emp_id=payload.suggested_employee_id,
+        intake_fields=payload.ocr_fields if isinstance(payload.ocr_fields, dict) else None,
+    )
     await crud.event_manager.broadcast("DOCUMENT_CREATED", document_id=doc.doc_id, user_id=current_user.id)
     db.refresh(doc)
-    return serializers.document_detail(db, doc)
+    return _detail(db, doc, current_user, ctx)
 
 
 # =========================================================
@@ -735,7 +797,7 @@ def list_documents(
     ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
 ):
     docs = workflow.documents_for_context(db, current_user, _context_id(ctx))
-    return serializers.documents_with_my_work(db, docs, current_user.id, _context_id(ctx))
+    return serializers.documents_with_my_work(db, docs, current_user.id, _context_id(ctx), current_user)
 
 
 @app.get(f"{API_V1}/documents/inbox", response_model=List[schemas.DocumentListResponse], tags=["Documents"])
@@ -746,7 +808,7 @@ def inbox(
 ):
     """What the active context must act on now."""
     docs = workflow.inbox_for_context(db, current_user, _context_id(ctx))
-    return serializers.documents_with_my_work(db, docs, current_user.id, _context_id(ctx))
+    return serializers.documents_with_my_work(db, docs, current_user.id, _context_id(ctx), current_user)
 
 
 @app.post(
@@ -764,7 +826,7 @@ def create_document(
     if not ctx or ctx.context_type != WorkContextType.DS:
         raise HTTPException(status_code=403, detail="Only the DS can register documents.")
     doc = crud.create_document(db, payload, created_by=current_user.id, context_id=ctx.id)
-    return serializers.document_detail(db, doc)
+    return _detail(db, doc, current_user, ctx)
 
 
 @app.get(
@@ -779,7 +841,7 @@ def get_document(
     ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
 ):
     doc = _authorized_document(db, document_id, current_user, ctx)
-    return serializers.document_detail(db, doc)
+    return _detail(db, doc, current_user, ctx)
 
 
 @app.patch(
@@ -799,7 +861,7 @@ def update_document(
         doc = crud.update_document_metadata(db, document_id, payload, current_user, _context_id(ctx))
     except Exception as exc:
         raise _handle(exc)
-    return serializers.document_detail(db, doc)
+    return _detail(db, doc, current_user, ctx)
 
 
 @app.post(
@@ -819,7 +881,7 @@ def register_document(
         )
     except Exception as exc:
         raise _handle(exc)
-    return serializers.document_detail(db, doc)
+    return _detail(db, doc, current_user, ctx)
 
 @app.post(
     f"{API_V1}/documents/{{document_id}}/send-to-director",
@@ -880,7 +942,7 @@ async def close_document(
     except Exception as exc:
         raise _handle(exc)
     await crud.event_manager.broadcast("DOCUMENT_CLOSED", document_id=document_id, user_id=current_user.id)
-    return serializers.document_detail(db, doc)
+    return _detail(db, doc, current_user, ctx)
 
 
 @app.post(
@@ -902,7 +964,7 @@ def reopen_document(
         )
     except Exception as exc:
         raise _handle(exc)
-    return serializers.document_detail(db, doc)
+    return _detail(db, doc, current_user, ctx)
 
 
 @app.get(
@@ -916,8 +978,9 @@ def document_history(
     current_user: models.User = Depends(get_current_user),
     ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
 ):
-    _authorized_document(db, document_id, current_user, ctx)
-    return [serializers.event(e) for e in workflow.document_history(db, document_id)]
+    doc = _authorized_document(db, document_id, current_user, ctx)
+    scope = workflow.document_scope(db, current_user, _context_id(ctx), doc, context=ctx)
+    return [serializers.event(e) for e in workflow.document_history(db, document_id, scope)]
 
 
 @app.get(f"{API_V1}/history", response_model=List[schemas.WorkflowEventResponse], tags=["Documents"])
@@ -945,7 +1008,8 @@ def document_remarks(
     ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
 ):
     doc = _authorized_document(db, document_id, current_user, ctx)
-    return [serializers.remark(r) for r in doc.remarks]
+    scope = workflow.document_scope(db, current_user, _context_id(ctx), doc, context=ctx)
+    return [serializers.remark(r) for r in scope.remarks(doc.remarks)]
 
 
 # =========================================================
@@ -964,7 +1028,8 @@ def list_branches(
     ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
 ):
     doc = _authorized_document(db, document_id, current_user, ctx)
-    return [serializers.branch(b) for b in doc.branches]
+    scope = workflow.document_scope(db, current_user, _context_id(ctx), doc, context=ctx)
+    return [serializers.branch(b) for b in scope.branches(doc.branches)]
 
 
 @app.post(
@@ -1162,6 +1227,43 @@ def list_director_reviews(
     return [serializers.director_review(r) for r in doc.director_reviews]
 
 
+@app.patch(
+    f"{API_V1}/director-reviews/{{review_id}}",
+    response_model=schemas.DirectorReviewResponse,
+    tags=["Director"],
+)
+async def edit_director_review(
+    review_id: int,
+    payload: schemas.DirectorReviewEditRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+    ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
+):
+    """The Director corrects the wording of their own review.  The earlier
+    wording stays in the document history; the DS is notified."""
+    try:
+        review = workflow.edit_director_review(
+            db,
+            review_id=review_id,
+            remark_text=payload.remark_text,
+            actor=current_user,
+            context_id=_context_id(ctx),
+        )
+    except Exception as exc:
+        raise _handle(exc)
+    await crud.event_manager.broadcast(
+        "DIRECTOR_REMARK", document_id=review.document_id, user_id=current_user.id
+    )
+    try:
+        await run_in_threadpool(
+            intelligence.generate_routing_suggestion,
+            db, review.document_id, include_director_remark=True,
+        )
+    except Exception:
+        db.rollback()
+    return serializers.director_review(review)
+
+
 # =========================================================
 # WORK ITEMS (one person's work)
 # =========================================================
@@ -1202,7 +1304,8 @@ def document_work_items(
     ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
 ):
     doc = _authorized_document(db, document_id, current_user, ctx)
-    return [serializers.work_item(i) for i in doc.work_items]
+    scope = workflow.document_scope(db, current_user, _context_id(ctx), doc, context=ctx)
+    return [serializers.work_item(i) for i in doc.work_items if scope.branch_visible(i.branch_id)]
 
 
 @app.get(f"{API_V1}/work-items/{{work_item_id}}", response_model=schemas.WorkItemResponse, tags=["Work"])
@@ -1399,8 +1502,9 @@ def list_attachments(
     current_user: models.User = Depends(get_current_user),
     ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
 ):
-    _authorized_document(db, document_id, current_user, ctx)
-    return [serializers.attachment(a) for a in crud.get_attachments(db, document_id)]
+    doc = _authorized_document(db, document_id, current_user, ctx)
+    scope = workflow.document_scope(db, current_user, _context_id(ctx), doc, context=ctx)
+    return [serializers.attachment(a) for a in scope.attachments(crud.get_attachments(db, document_id))]
 
 
 @app.post(
@@ -1551,6 +1655,24 @@ def verify_field(
     field = intelligence.verify_extracted_field(
         db, document_id, payload.field_name, payload.verified_value, current_user
     )
+    if (payload.field_name or "").strip().upper() == "PRIOR_DIRECTOR_REVIEW_DETECTED":
+        # Confirming a Director instruction found on the document opens
+        # routing without a new Director review: log that decision, and let
+        # the instruction steer the routing suggestion.
+        try:
+            workflow.confirm_prior_director_review(
+                db,
+                document_id=document_id,
+                confirmed=str(payload.verified_value).strip().lower() in {"true", "1", "yes", "confirmed"},
+                remark_text=None,
+                actor=current_user,
+                context_id=_context_id(ctx),
+            )
+            intelligence.generate_routing_suggestion(db, document_id, include_director_remark=True)
+        except Exception as exc:
+            db.rollback()
+            print(f"[OCR] prior Director review confirmation for {document_id}: {exc}", flush=True)
+        db.refresh(field)
     return schemas.ExtractedFieldResponse(
         id=field.id, document_id=field.document_id, field_name=field.field_name,
         extracted_value=field.extracted_value, verified_value=field.verified_value,

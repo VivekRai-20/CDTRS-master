@@ -800,6 +800,70 @@ def _director_review_satisfied(
 
     return completed_review or _ocr_prior_director_review_detected(db, doc)
 
+
+def director_review_satisfied(db: Session, doc: models.Document) -> bool:
+    """Public form of the Director gate, shown to the DS routing dialog so it
+    only offers destinations the server will accept."""
+    return _director_review_satisfied(db, doc)
+
+
+def _director_remark_from_ocr(db: Session, doc: models.Document) -> Optional[str]:
+    """The Director instruction the DS confirmed from the document itself."""
+    row = (
+        db.query(models.DocumentExtractedField)
+        .filter(
+            models.DocumentExtractedField.document_id == doc.doc_id,
+            models.DocumentExtractedField.field_name == "DIRECTOR_HANDWRITTEN_REMARK",
+        )
+        .first()
+    )
+    if not row:
+        return None
+    value = (row.verified_value or row.extracted_value or "").strip()
+    return value or None
+
+
+def confirm_prior_director_review(
+    db: Session,
+    *,
+    document_id: int,
+    confirmed: bool,
+    remark_text: Optional[str],
+    actor: models.User,
+    context_id: Optional[int] = None,
+) -> None:
+    """Record in the history that the DS confirmed (or rejected) a Director
+    instruction OCR found on the document.  Confirmation satisfies the
+    Director review gate, so this is logged like any other decision."""
+    context = require_context(db, actor, context_id, WorkContextType.DS)
+    doc = _get_document(db, document_id)
+    text = (remark_text or "").strip() or _director_remark_from_ocr(db, doc)
+    if confirmed:
+        record_event(
+            db,
+            document_id=doc.doc_id,
+            event_type="PRIOR_DIRECTOR_REVIEW_CONFIRMED",
+            summary=(
+                f"{actor.full_name} confirmed the Director had already reviewed this document "
+                "(instruction found on the document) - Director review step not needed"
+            ),
+            actor=actor,
+            context=context,
+            details=text,
+        )
+    else:
+        record_event(
+            db,
+            document_id=doc.doc_id,
+            event_type="PRIOR_DIRECTOR_REVIEW_REJECTED",
+            summary=f"{actor.full_name} marked the OCR-detected Director instruction as not a prior review",
+            actor=actor,
+            context=context,
+            details=text,
+        )
+    _touch(doc)
+    db.commit()
+
 def _assert_director_review_before_work_routing(
     db: Session,
     doc: models.Document,
@@ -1794,6 +1858,79 @@ def submit_director_review(
     return review
 
 
+def edit_director_review(
+    db: Session,
+    *,
+    review_id: int,
+    remark_text: str,
+    actor: models.User,
+    context_id: Optional[int] = None,
+) -> models.DirectorReview:
+    """The Director corrects the wording of a review they wrote.
+
+    The review keeps its number and place in the sequence; the previous
+    wording is preserved in the document history (and the remark trail gets a
+    new entry), so nothing that was said is lost.  The DS is told.
+    """
+    context = require_context(db, actor, context_id, WorkContextType.DIRECTOR)
+    review = db.query(models.DirectorReview).filter(models.DirectorReview.id == review_id).first()
+    if not review:
+        raise WorkflowError("Director review not found.")
+    if review.director_user_id != actor.id:
+        raise PermissionDenied("Only the Director who wrote this review can edit it.")
+    doc = review.document
+    _assert_open(doc)
+
+    text = (remark_text or "").strip()
+    if not text:
+        raise WorkflowError("A Director review must carry a remark.")
+    previous = review.remark_text or ""
+    if text == previous.strip():
+        return review
+
+    review.remark_text = text
+    review.edited_at = datetime.now()
+
+    add_remark(
+        db,
+        document_id=doc.doc_id,
+        author=actor,
+        context=context,
+        remark_text=text,
+        remark_type=RemarkType.DIRECTOR,
+        branch_id=review.branch_id,
+        provenance="DIRECTOR_REVIEW_EDIT",
+    )
+
+    event = record_event(
+        db,
+        document_id=doc.doc_id,
+        branch_id=review.branch_id,
+        event_type="DIRECTOR_REMARK_EDITED",
+        summary=f"{actor.full_name} edited Director review #{review.review_no}",
+        actor=actor,
+        context=context,
+        details=f"Previous: {previous}\nNew: {text}",
+    )
+
+    for ds in ds_contexts(db):
+        notify(
+            db,
+            user_id=ds.user_id,
+            context_membership_id=ds.id,
+            document_id=doc.doc_id,
+            branch_id=review.branch_id,
+            event_id=event.id,
+            title=f"{doc.reference_no}: Director remark edited",
+            message=f"Director review #{review.review_no} on '{doc.title}' now reads: {text}",
+        )
+
+    _touch(doc)
+    db.commit()
+    db.refresh(review)
+    return review
+
+
 # =========================================================
 # BRANCH REMARKS (HOD / DS)
 # =========================================================
@@ -2373,13 +2510,110 @@ def branch_work_items_for_context(
     )
 
 
-def document_history(db: Session, document_id: int) -> List[models.WorkflowEvent]:
-    return (
+class DocumentScope:
+    """The part of one document the active context may see.
+
+    The DS and the Director see everything.  An HOD sees the workstreams of
+    their own department (plus the Director review, which guides everyone);
+    an employee or the TSO sees the workstreams they work on.  Document-level
+    items (registration, closure, the original file) are visible to all who
+    can open the document.
+    """
+
+    def __init__(self, branch_ids: Optional[set] = None):
+        #: None means "everything"; otherwise the visible branch ids.
+        self.branch_ids = branch_ids
+
+    @property
+    def is_full(self) -> bool:
+        return self.branch_ids is None
+
+    def branch_visible(self, branch_id: Optional[int]) -> bool:
+        """Visibility of something recorded against a branch (None =
+        document-level, always visible)."""
+        if self.branch_ids is None or branch_id is None:
+            return True
+        return branch_id in self.branch_ids
+
+    def branches(self, branches):
+        if self.branch_ids is None:
+            return list(branches)
+        return [b for b in branches if b.id in self.branch_ids]
+
+    def events(self, events):
+        return [e for e in events if self.branch_visible(e.branch_id)]
+
+    def remarks(self, remarks):
+        return [r for r in remarks if self.branch_visible(r.branch_id)]
+
+    def attachments(self, attachments):
+        if self.branch_ids is None:
+            return list(attachments)
+        visible = []
+        for a in attachments:
+            update = a.progress_update
+            branch_id = update.work_item.branch_id if (update and update.work_item) else None
+            if self.branch_visible(branch_id):
+                visible.append(a)
+        return visible
+
+
+FULL_SCOPE = DocumentScope(None)
+
+
+def _branch_visible_to(
+    branch: models.DocumentBranch,
+    user: models.User,
+    context: models.WorkContextMembership,
+) -> bool:
+    if branch.target_user_id == user.id or branch.opened_by_user_id == user.id:
+        return True
+    if context.context_type == WorkContextType.HOD:
+        if branch.branch_type == BranchType.DIRECTOR:
+            return True
+        if (
+            branch.branch_type == BranchType.DEPARTMENT
+            and context.department_id is not None
+            and branch.department_id == context.department_id
+        ):
+            return True
+    for w in branch.work_items:
+        if w.assigned_to_user_id == user.id or w.assigned_by_user_id == user.id:
+            return True
+    return False
+
+
+def document_scope(
+    db: Session,
+    user: Optional[models.User],
+    context_id: Optional[int],
+    doc: models.Document,
+    context: Optional[models.WorkContextMembership] = None,
+) -> DocumentScope:
+    """What of *doc* the caller's active context may see."""
+    if user is None:
+        return FULL_SCOPE
+    if context is None:
+        context = resolve_context(db, user, context_id)
+    if context is None:
+        return DocumentScope(set())
+    if context.context_type in (WorkContextType.DS, WorkContextType.DIRECTOR):
+        return FULL_SCOPE
+    return DocumentScope({b.id for b in doc.branches if _branch_visible_to(b, user, context)})
+
+
+def document_history(
+    db: Session,
+    document_id: int,
+    scope: Optional[DocumentScope] = None,
+) -> List[models.WorkflowEvent]:
+    events = (
         db.query(models.WorkflowEvent)
         .filter(models.WorkflowEvent.document_id == document_id)
         .order_by(models.WorkflowEvent.created_at.asc(), models.WorkflowEvent.id.asc())
         .all()
     )
+    return scope.events(events) if scope is not None else events
 
 
 def visible_history(
@@ -2388,18 +2622,28 @@ def visible_history(
     context_id: Optional[int] = None,
     limit: int = 500,
 ) -> List[models.WorkflowEvent]:
-    """History across every document the active context can see."""
+    """History across every document the active context can see, limited to
+    the workstreams that context may see on each document."""
+    context = resolve_context(db, user, context_id)
     docs = documents_for_context(db, user, context_id)
     if not docs:
         return []
     ids = [d.doc_id for d in docs]
-    return (
+    events = (
         db.query(models.WorkflowEvent)
         .filter(models.WorkflowEvent.document_id.in_(ids))
         .order_by(models.WorkflowEvent.created_at.desc())
-        .limit(limit)
-        .all()
     )
+    if context is not None and context.context_type in (WorkContextType.DS, WorkContextType.DIRECTOR):
+        return events.limit(limit).all()
+    scopes = {d.doc_id: document_scope(db, user, context_id, d, context=context) for d in docs}
+    visible: List[models.WorkflowEvent] = []
+    for e in events.all():
+        if scopes[e.document_id].branch_visible(e.branch_id):
+            visible.append(e)
+            if len(visible) >= limit:
+                break
+    return visible
 
 
 # =========================================================

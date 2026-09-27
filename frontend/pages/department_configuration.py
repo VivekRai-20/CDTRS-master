@@ -48,16 +48,18 @@ class DepartmentDialog(QDialog):
             widget.setStyleSheet(field_style)
 
         hint = QLabel(
-            "Description and keywords are used to suggest this department when a "
-            "document is registered. Keywords written in capitals (e.g. GST, IT) "
-            "must appear in capitals in the document."
+            "The description is required: OCR compares every incoming document with it "
+            "(meaning, not just exact words) to suggest this department. Describe the "
+            "subjects, document types and requests the department handles. Keywords add "
+            "exact-word matches; keywords written in capitals (e.g. GST, IT) must appear "
+            "in capitals in the document."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #6b7280; font-size: 11px;")
 
         layout.addRow("Name:", self.name_input)
         layout.addRow("Code:", self.code_input)
-        layout.addRow("Description:", self.description_input)
+        layout.addRow("Description *:", self.description_input)
         layout.addRow("Routing keywords:", self.keywords_input)
         layout.addRow("", hint)
 
@@ -69,6 +71,16 @@ class DepartmentDialog(QDialog):
     def _validate_and_accept(self):
         if not self.name_input.text().strip():
             QMessageBox.warning(self, "Department", "Please enter the department name.")
+            return
+        description = self.description_input.toPlainText().strip()
+        if len(description) < 15:
+            QMessageBox.warning(
+                self,
+                "Department",
+                "Please describe what this department handles (at least a sentence).\n\n"
+                "OCR uses the description to suggest this department for incoming documents.",
+            )
+            self.description_input.setFocus()
             return
         self.accept()
 
@@ -181,9 +193,11 @@ class DepartmentConfigurationPage(QWidget):
         toolbar.addLayout(sort_layout)
         toolbar.addWidget(clear_btn, 0, Qt.AlignmentFlag.AlignBottom)
 
-        self.table = QTableWidget(0, 6)
+        self.table = QTableWidget(0, 7)
         self.table.setShowGrid(False)
-        self.table.setHorizontalHeaderLabels(["#", "Department Name", "Code", "Routing Keywords", "Status", "Actions"])
+        self.table.setHorizontalHeaderLabels(
+            ["#", "Department Name", "Code", "Description (used for OCR matching)", "Routing Keywords", "Status", "Actions"]
+        )
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setAlternatingRowColors(True)
@@ -192,8 +206,10 @@ class DepartmentConfigurationPage(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.table.setColumnWidth(0, 50)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(5, 280)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(6, 280)
+        self.table.setWordWrap(True)
         
         self.table.setStyleSheet('''
             QTableWidget {
@@ -359,16 +375,27 @@ class DepartmentConfigurationPage(QWidget):
             # Code
             self.table.setItem(r, 2, QTableWidgetItem(code))
 
-            # Routing keywords (description in the tooltip)
+            # Description: what the department handles.  OCR compares each
+            # incoming document with it to suggest the department.
+            description = str(dept.get("description") or "").strip()
+            desc_item = QTableWidgetItem(
+                description if len(description) <= 120 else description[:117] + "..."
+            )
+            if description:
+                desc_item.setToolTip(description)
+            else:
+                desc_item.setText("⚠ Missing - add one so OCR can suggest this department")
+                desc_item.setForeground(Qt.GlobalColor.darkYellow)
+                desc_item.setToolTip("Click Edit and describe what this department handles.")
+            self.table.setItem(r, 3, desc_item)
+
+            # Routing keywords
             keywords = str(dept.get("keywords") or "")
             kw_item = QTableWidgetItem(keywords if len(keywords) <= 80 else keywords[:77] + "...")
-            tooltip = "\n\n".join(
-                part for part in (str(dept.get("description") or ""), keywords) if part
-            )
-            kw_item.setToolTip(tooltip or "No description or keywords yet - click Edit to add them.")
+            kw_item.setToolTip(keywords or "No keywords yet - click Edit to add them.")
             if not keywords:
                 kw_item.setText("—")
-            self.table.setItem(r, 3, kw_item)
+            self.table.setItem(r, 4, kw_item)
             
             # Status Pill
             status_widget = QWidget()
@@ -382,7 +409,7 @@ class DepartmentConfigurationPage(QWidget):
             else:
                 pill.setStyleSheet("background: #fee2e2; color: #991b1b; padding: 4px 10px; border-radius: 12px; font-weight: 600; font-size: 12px;")
             status_layout.addWidget(pill)
-            self.table.setCellWidget(r, 4, status_widget)
+            self.table.setCellWidget(r, 5, status_widget)
             
             # Actions
             actions_widget = QWidget()
@@ -406,7 +433,7 @@ class DepartmentConfigurationPage(QWidget):
             
             actions_layout.addWidget(edit_btn)
             actions_layout.addWidget(dots_btn)
-            self.table.setCellWidget(r, 5, actions_widget)
+            self.table.setCellWidget(r, 6, actions_widget)
         
         self.table.verticalHeader().setDefaultSectionSize(54)
 

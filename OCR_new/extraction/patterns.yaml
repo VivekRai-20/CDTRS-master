@@ -55,11 +55,28 @@ roll_no:
   group: 1
 
 date:
+  # Labelled dates first ("Date: ...", "Dated ..."), but not "Last date" /
+  # "Due date" / "Target date", which are deadlines.  Only real calendar dates
+  # are accepted (see extraction/date_utils.py), so a reference number such as
+  # 44/88/2026 is never taken as a date.
   patterns:
+    - '(?<!last )(?<!due )(?<!target )(?<!expiry )\bDated?(?:\s*of\s*(?:Submission|Issue|Receipt|Letter))?\s*[:\-.]?\s*(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})'
+    - '(?<!last )(?<!due )(?<!target )(?<!expiry )\bDated?(?:\s*of\s*(?:Submission|Issue|Receipt|Letter))?\s*[:\-.]?\s*(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9}\.?,?\s+\d{2,4})'
+    - '(?<!last )(?<!due )(?<!target )(?<!expiry )\bDated?(?:\s*of\s*(?:Submission|Issue|Receipt|Letter))?\s*[:\-.]?\s*([A-Za-z]{3,9}\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4})'
+    - '(?<!last )(?<!due )(?<!target )(?<!expiry )\bDate(?:\s*of\s*Submission)?\s*[:\-.]?\s*\n\s*(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})'
     - '\b(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})\b'
-    - 'Date(?:\s*of\s*Submission)?\s*[:\-.]?\s*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})'
-    - 'Date(?:\s*of\s*Submission)?\s*[:\-.]?\s*(\d{1,2}\s+\w+\s+\d{2,4})'
-    - 'Date(?:\s*of\s*Submission)?\s*[:\-.]?\s*\n\s*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})'
+    - '\b(\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?,?\s+\d{4})\b'
+  flags: [IGNORECASE]
+  group: 1
+
+deadline:
+  # A date the document asks something to be done by.  Relative deadlines
+  # ("within 7 days") are resolved against the received date by the intake.
+  patterns:
+    - '(?:deadline|due\s*date|last\s*date(?:\s*(?:for|of)\s*[A-Za-z ]{0,30}?)?|target\s*date|expiry\s*date|submit(?:ted)?\s*(?:by|before)|reply\s*by|respond\s*by|on\s*or\s*before|not\s*later\s*than|latest\s*by|by\s*(?:the\s*)?latest)\s*[:\-.]?\s*(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})'
+    - '(?:deadline|due\s*date|last\s*date(?:\s*(?:for|of)\s*[A-Za-z ]{0,30}?)?|target\s*date|expiry\s*date|submit(?:ted)?\s*(?:by|before)|reply\s*by|respond\s*by|on\s*or\s*before|not\s*later\s*than|latest\s*by|by\s*(?:the\s*)?latest)\s*[:\-.]?\s*(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9}\.?,?\s+\d{2,4})'
+    - '(?:deadline|due\s*date|last\s*date|target\s*date|expiry\s*date|submit(?:ted)?\s*(?:by|before)|reply\s*by|respond\s*by|on\s*or\s*before|not\s*later\s*than|latest\s*by)\s*[:\-.]?\s*([A-Za-z]{3,9}\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4})'
+    - '(?:deadline|due\s*date|last\s*date|target\s*date)\s*[:\-.]?\s*\n\s*(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})'
   flags: [IGNORECASE]
   group: 1
 

@@ -136,6 +136,10 @@ class APIRepository(BaseRepository):
     def get_intake_items(self) -> List[Dict[str, Any]]:
         return self.client.get(Endpoints.INTAKE_LIST) or []
 
+    def get_intake_attachments(self, intake_id: int) -> List[Dict[str, Any]]:
+        """Files that arrived with a mail item (before it is registered)."""
+        return self.client.get(Endpoints.INTAKE_ATTACHMENTS(intake_id)) or []
+
     # Legacy alias used by the inbox page.
     def get_incoming_messages(self) -> List[Dict[str, Any]]:
         return self.get_intake_items()
@@ -284,6 +288,13 @@ class APIRepository(BaseRepository):
         data = self.client.post(
             Endpoints.DIRECTOR_REVIEW_SUBMIT(branch_id),
             json={"remark_text": remark_text, "expected_version": expected_version},
+        )
+        return DirectorReviewModel.from_dict(data) if data else None
+
+    def edit_director_review(self, review_id: int, remark_text: str) -> Optional[DirectorReviewModel]:
+        """The Director corrects the wording of a review they wrote."""
+        data = self.client.patch(
+            Endpoints.DIRECTOR_REVIEW_EDIT(review_id), json={"remark_text": remark_text}
         )
         return DirectorReviewModel.from_dict(data) if data else None
 

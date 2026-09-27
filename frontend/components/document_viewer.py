@@ -459,6 +459,24 @@ class DocumentViewer(QWidget):
             text.setWordWrap(True)
             text.setStyleSheet("color: #1E293B; font-size: 11px;")
             inner.addWidget(text)
+
+            # The Director may correct the wording of their own review.
+            if (
+                self.is_director
+                and not doc.is_closed
+                and review.id
+                and (review.director_user_id in (None, self._user_id))
+            ):
+                edit_row = QHBoxLayout()
+                edit_row.addStretch()
+                edit_btn = QPushButton("Edit Remark")
+                edit_btn.setStyleSheet(
+                    "background-color: #F5F3FF; color: #5B21B6; border: 1px solid #DDD6FE; "
+                    "font-weight: 600; font-size: 10px; padding: 4px 10px; border-radius: 4px;"
+                )
+                edit_btn.clicked.connect(lambda _=False, r=review: self._edit_director_review(r))
+                edit_row.addWidget(edit_btn)
+                inner.addLayout(edit_row)
             layout.addWidget(block)
 
     def _render_branches(self) -> None:
@@ -504,7 +522,12 @@ class DocumentViewer(QWidget):
         self._clear(layout)
         doc = self.document
 
-        remarks = [r for r in doc.remarks if r.provenance != "DIRECTOR_REVIEW"]
+        # Director review remarks (and their later edits) are shown in the
+        # Director Review section instead.
+        remarks = [
+            r for r in doc.remarks
+            if r.provenance not in ("DIRECTOR_REVIEW", "DIRECTOR_REVIEW_EDIT")
+        ]
         if not remarks:
             self.remarks_section["frame"].setVisible(False)
             return
@@ -584,6 +607,7 @@ class DocumentViewer(QWidget):
                 buttons.append(make("Edit Details", self._edit_details))
                 buttons.append(make("Send Reminder", self._send_reminder))
                 buttons.append(make("Close Document", self._close_document))
+            buttons.append(make("🖨 Print Workflow", self._print_workflow))
 
         elif self.is_director:
             if doc.open_director_branch:
@@ -791,6 +815,29 @@ class DocumentViewer(QWidget):
             ),
             "Review recorded",
             "Your remark is saved and the document has returned to the DS.",
+        )
+
+    def _print_workflow(self) -> None:
+        from components.workflow_print import print_workflows
+        print_workflows(self, [self.document])
+
+    def _edit_director_review(self, review) -> None:
+        dialog = RemarkDialog(
+            f"Edit Director Review #{review.review_no}",
+            "Correct the wording of your remark. The earlier wording is kept in the "
+            "document history and the DS is told about the change.",
+            self,
+            prefill=review.remark_text,
+        )
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+        new_text = dialog.get_text()
+        if new_text == (review.remark_text or "").strip():
+            return
+        self._guard(
+            lambda: routing_service.edit_director_review(review.id, new_text),
+            "Remark updated",
+            "Your remark has been updated. The DS has been notified.",
         )
 
     # ---- HOD / DS assignment ----

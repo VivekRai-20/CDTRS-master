@@ -28,6 +28,7 @@ import re
 from typing import Any, Optional
 
 from extraction.pattern_manager import PatternManager, PatternDefinition
+from extraction.date_utils import is_valid_date
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -129,28 +130,37 @@ class RegexEngine:
     # Private helpers                                                      #
     # ------------------------------------------------------------------ #
 
-    @staticmethod
-    def _match_field(text: str, defn: PatternDefinition) -> ExtractionResult:
+    #: Fields whose value must be a real calendar date.  Text that only has
+    #: the shape of a date (a reference number such as "44/88/2026") is
+    #: skipped and the next match is tried.
+    DATE_FIELDS = frozenset({"date", "deadline", "received_date", "due_date"})
+
+    @classmethod
+    def _match_field(cls, text: str, defn: PatternDefinition) -> ExtractionResult:
         """
         Try each compiled pattern for *defn* against *text*.
-        Return the first successful match.
+        Return the first successful match (for date fields: the first match
+        that is a real calendar date).
         """
+        needs_date = defn.field in cls.DATE_FIELDS
         for idx, compiled in enumerate(defn.patterns, start=1):
-            match = compiled.search(text)
-            if match:
+            for match in compiled.finditer(text):
                 try:
                     value = match.group(defn.group).strip()
                 except IndexError:
                     # Pattern has no capturing group — return the full match
                     value = match.group(0).strip()
 
-                if value:
-                    return ExtractionResult(
-                        field=defn.field,
-                        value=value,
-                        matched_by=f"Pattern {idx}",
-                        pattern_str=compiled.pattern,
-                    )
+                if not value:
+                    continue
+                if needs_date and not is_valid_date(value):
+                    continue
+                return ExtractionResult(
+                    field=defn.field,
+                    value=value,
+                    matched_by=f"Pattern {idx}",
+                    pattern_str=compiled.pattern,
+                )
 
         return ExtractionResult(field=defn.field)   # value=None
 
