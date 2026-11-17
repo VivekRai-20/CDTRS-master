@@ -108,6 +108,8 @@ def event(e: models.WorkflowEvent) -> schemas.WorkflowEventResponse:
         summary=e.summary,
         details=e.details,
         created_at=e.created_at,
+        document_reference=e.document.reference_no if e.document else None,
+        document_title=e.document.title if e.document else None,
     )
 
 

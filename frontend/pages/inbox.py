@@ -248,6 +248,95 @@ class InboxPage(QWidget):
         )
 
         # ============================================================
+        # MAILBOX LOGIN
+        # The mailbox that Sync Now reads is signed in with the e-mail ID
+        # and password typed here (they used to come from DS_MAIL_USER /
+        # DS_MAIL_PASS in backend/.env).  They stay in these fields for
+        # this session only and are never saved to disk.
+        # ============================================================
+
+        mailbox_row = QHBoxLayout()
+        mailbox_row.setSpacing(8)
+
+        mailbox_label = QLabel(
+            "Mailbox"
+        )
+
+        mailbox_label.setStyleSheet(
+            "color: #334155; font-weight: 600;"
+        )
+
+        mailbox_row.addWidget(
+            mailbox_label
+        )
+
+        self.mailbox_email_input = QLineEdit()
+
+        self.mailbox_email_input.setPlaceholderText(
+            "E-mail ID"
+        )
+
+        self.mailbox_email_input.setMinimumWidth(
+            200
+        )
+
+        self.mailbox_email_input.setMaximumWidth(
+            340
+        )
+
+        mailbox_row.addWidget(
+            self.mailbox_email_input,
+            2,
+        )
+
+        self.mailbox_password_input = QLineEdit()
+
+        self.mailbox_password_input.setPlaceholderText(
+            "Password"
+        )
+
+        self.mailbox_password_input.setEchoMode(
+            QLineEdit.EchoMode.Password
+        )
+
+        self.mailbox_password_input.setMinimumWidth(
+            150
+        )
+
+        self.mailbox_password_input.setMaximumWidth(
+            260
+        )
+
+        self.mailbox_password_input.returnPressed.connect(
+            self._sync_outlook
+        )
+
+        mailbox_row.addWidget(
+            self.mailbox_password_input,
+            1,
+        )
+
+        mailbox_hint = QLabel(
+            "Used for Sync Now. Not saved."
+        )
+
+        mailbox_hint.setStyleSheet(
+            "color: #64748B; font-size: 12px;"
+        )
+
+        mailbox_row.addWidget(
+            mailbox_hint
+        )
+
+        mailbox_row.addStretch(
+            1
+        )
+
+        main_layout.addLayout(
+            mailbox_row
+        )
+
+        # ============================================================
         # SUMMARY CARDS
         # ============================================================
 
@@ -287,11 +376,6 @@ class InboxPage(QWidget):
             1,
         )
 
-        # Keep the cards compact and prevent them
-        # from stretching across the entire window.
-        stats.addStretch(
-            2
-        )
 
         main_layout.addLayout(
             stats
@@ -826,16 +910,13 @@ class InboxPage(QWidget):
         )
 
         card.setMinimumWidth(
-            220
+            160
         )
 
-        card.setMaximumWidth(
-            300
-        )
-
+        card.setObjectName("scoped_card_925")
         card.setStyleSheet(
             f"""
-            QFrame {{
+            QFrame#scoped_card_925 {{
                 background: #FFFFFF;
                 border: 1px solid #DCE5F0;
                 border-left: 4px solid {accent};
@@ -931,11 +1012,10 @@ class InboxPage(QWidget):
 
         frame = QFrame()
 
-        frame.setStyleSheet(
-            """
+        frame.setObjectName("scoped_frame_1023")
+        frame.setStyleSheet("#scoped_frame_1023 {" + """
             background: #FFFFFF;
-            """
-        )
+            """ + "}")
 
         layout = QVBoxLayout(
             frame
@@ -1604,9 +1684,13 @@ class InboxPage(QWidget):
                         "subject"
                     ),
 
+                    # The server sends the mail text as body_reference.
                     "body": (
                         item.get(
                             "body"
+                        )
+                        or item.get(
+                            "body_reference"
                         )
                         or ""
                     ),
@@ -2011,9 +2095,10 @@ class InboxPage(QWidget):
 
         header = QFrame()
 
+        header.setObjectName("scoped_header_2107")
         header.setStyleSheet(
             """
-            QFrame {
+            QFrame#scoped_header_2107 {
                 background: #FFFFFF;
                 border-bottom: 1px solid #E2E8F0;
             }
@@ -2117,9 +2202,10 @@ class InboxPage(QWidget):
 
         sender_card = QFrame()
 
+        sender_card.setObjectName("scoped_sender_card_2213")
         sender_card.setStyleSheet(
             """
-            QFrame {
+            QFrame#scoped_sender_card_2213 {
                 background: #F8FAFC;
                 border: 1px solid #E2E8F0;
                 border-radius: 8px;
@@ -2247,9 +2333,10 @@ class InboxPage(QWidget):
 
         body_card = QFrame()
 
+        body_card.setObjectName("scoped_body_card_2343")
         body_card.setStyleSheet(
             """
-            QFrame {
+            QFrame#scoped_body_card_2343 {
                 background: #FFFFFF;
                 border: 1px solid #E2E8F0;
                 border-radius: 8px;
@@ -2341,9 +2428,10 @@ class InboxPage(QWidget):
 
         attachments = QFrame()
 
+        attachments.setObjectName("scoped_attachments_2437")
         attachments.setStyleSheet(
             """
-            QFrame {
+            QFrame#scoped_attachments_2437 {
                 background: #F8FAFC;
                 border: 1px solid #E2E8F0;
                 border-radius: 8px;
@@ -2422,9 +2510,10 @@ class InboxPage(QWidget):
 
         note = QFrame()
 
+        note.setObjectName("scoped_note_2518")
         note.setStyleSheet(
             """
-            QFrame {
+            QFrame#scoped_note_2518 {
                 background: #EFF6FF;
                 border: 1px solid #BFDBFE;
                 border-radius: 8px;
@@ -2552,11 +2641,30 @@ class InboxPage(QWidget):
             # The server talks to the mail system; keep the window responsive.
             from components.busy_dialog import BusyDialog
 
+            mailbox_email = (
+                self.mailbox_email_input.text().strip()
+            )
+
+            mailbox_password = (
+                self.mailbox_password_input.text()
+            )
+
+            if bool(mailbox_email) != bool(mailbox_password):
+                QMessageBox.information(
+                    self,
+                    "Mailbox Login",
+                    "Enter both the mailbox e-mail ID and its password.",
+                )
+                return
+
             result = BusyDialog.run(
                 self,
                 "Mailbox Sync",
                 "Checking the mailbox for new documents...",
-                repo.sync_outlook,
+                lambda: repo.sync_outlook(
+                    mailbox_email or None,
+                    mailbox_password or None,
+                ),
             )
 
             if not isinstance(

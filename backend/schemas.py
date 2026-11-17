@@ -486,6 +486,10 @@ class WorkflowEventResponse(BaseModel):
     summary: str
     details: Optional[str] = None
     created_at: datetime
+    # So the Workflow History page can show the document's reference and
+    # title instead of its database id.
+    document_reference: Optional[str] = None
+    document_title: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -713,8 +717,16 @@ class ReminderSendRequest(BaseModel):
 
 class ReminderSendResponse(BaseModel):
     sent: int
+    emailed: int = 0
     channel: str = "in-app"
     detail: Optional[str] = None
+
+
+class MailboxLoginRequest(BaseModel):
+    """Mailbox login typed on the Inbox screen.  Used for one sync and never
+    stored or returned."""
+    email: Optional[str] = None
+    password: Optional[str] = Field(default=None, repr=False)
 
 
 class OutlookSyncResponse(BaseModel):

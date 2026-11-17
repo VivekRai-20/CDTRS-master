@@ -29,8 +29,9 @@ class NotificationPanel(QFrame):
         super().__init__(parent)
 
         self.setObjectName("NotificationPanel")
-        self.setFixedWidth(390)
-        self.setMaximumHeight(520)
+        # Docked beside the dashboard content: a fixed width and the full
+        # height that is available.
+        self.setFixedWidth(360)
 
         self.setStyleSheet(
             """

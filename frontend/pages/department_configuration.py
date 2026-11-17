@@ -148,7 +148,8 @@ class DepartmentConfigurationPage(QWidget):
 
         # Filters and Table Container
         main_card = QFrame()
-        main_card.setStyleSheet("background: white; border-radius: 12px; border: 1px solid #bfdbfe;")
+        main_card.setObjectName("scoped_main_card_151")
+        main_card.setStyleSheet("#scoped_main_card_151 {" + "background: white; border-radius: 12px; border: 1px solid #bfdbfe;" + "}")
         main_layout = QVBoxLayout(main_card)
         main_layout.setContentsMargins(14, 14, 14, 14)
         main_layout.setSpacing(16)
@@ -281,7 +282,8 @@ class DepartmentConfigurationPage(QWidget):
 
     def _create_stat_card(self, title, value, icon, bg_color, icon_color):
         card = QFrame()
-        card.setStyleSheet(f"background: white; border-radius: 12px; border: 1px solid #bfdbfe;")
+        card.setObjectName("scoped_card_284")
+        card.setStyleSheet("#scoped_card_284 {" + f"background: white; border-radius: 12px; border: 1px solid #bfdbfe;" + "}")
         layout = QHBoxLayout(card)
         layout.setContentsMargins(14, 14, 14, 14)
         

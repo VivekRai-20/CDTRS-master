@@ -335,6 +335,9 @@ class Sidebar(QFrame):
         """Rebuild navigation strictly from the active context."""
         for button in list(self.buttons.values()):
             self.layout.removeWidget(button)
+            # Hide at once: deleteLater() runs later, and until then the old
+            # button would still be painted over the new menu.
+            button.hide()
             button.deleteLater()
         self.buttons.clear()
 

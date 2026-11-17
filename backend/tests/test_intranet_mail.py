@@ -4,9 +4,9 @@
 #
 # Tests the CURRENT CDTRS intranet provider:
 #   1. Reads .env
-#   2. Verifies DS IMAP configuration
+#   2. Verifies DS POP3 configuration
 #   3. Connects to DS mailbox
-#   4. Fetches unread incoming emails
+#   4. Fetches the most recent incoming emails (read-only, POP3 state untouched)
 #   5. Displays subjects/senders/attachments
 #   6. Verifies CDTRS SMTP configuration
 #   7. Optionally sends a real test email from the CDTRS mailbox
@@ -116,7 +116,7 @@ def print_result(name: str, passed: bool, detail: str = "") -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Test CDTRS local/intranet IMAP + SMTP mail integration."
+        description="Test CDTRS local/intranet POP3 + SMTP mail integration."
     )
 
     parser.add_argument(
@@ -137,13 +137,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--incoming-only",
         action="store_true",
-        help="Only test IMAP incoming mail and skip SMTP.",
+        help="Only test POP3 incoming mail and skip SMTP.",
     )
 
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Run IMAP test and SMTP test if TEST_MAIL_RECIPIENT is configured.",
+        help="Run POP3 test and SMTP test if TEST_MAIL_RECIPIENT is configured.",
     )
 
     return parser.parse_args()
@@ -156,10 +156,11 @@ def parse_args() -> argparse.Namespace:
 def show_configuration(provider: IntranetMailProvider) -> None:
     print_header("CDTRS INTRANET MAIL CONFIGURATION")
 
-    print(f"IMAP host          : {provider.imap_host or '(empty)'}")
-    print(f"IMAP port          : {provider.imap_port}")
-    print(f"IMAP security      : {provider.imap_security}")
-    print(f"IMAP authentication: {provider.imap_auth}")
+    print(f"POP3 host          : {provider.pop3_host or '(empty)'}")
+    print(f"POP3 port          : {provider.pop3_port}")
+    print(f"POP3 security      : {provider.pop3_security}")
+    print(f"POP3 authentication: {provider.pop3_auth}")
+    print(f"POP3 state file    : {provider.pop3_state_file}")
     print(f"DS mailbox user    : {provider.ds_mail_user or '(empty)'}")
     print(f"DS mailbox pass    : {mask(provider.ds_mail_pass)}")
 
@@ -176,7 +177,7 @@ def show_configuration(provider: IntranetMailProvider) -> None:
 
     print()
     print("Expected architecture:")
-    print("  Incoming: DS mailbox  <- IMAP <- Office mail server")
+    print("  Incoming: DS mailbox  <- POP3 <- Office mail server")
     print("  Outgoing: CDTRS mailbox -> SMTP -> Recipient")
 
 
@@ -190,7 +191,7 @@ def check_configuration(provider: IntranetMailProvider) -> bool:
     passed = True
 
     required_values = [
-        ("INTRANET_IMAP_HOST", provider.imap_host),
+        ("INTRANET_POP3_HOST", provider.pop3_host),
         ("DS_MAIL_USER", provider.ds_mail_user),
         ("DS_MAIL_PASS", provider.ds_mail_pass),
         ("INTRANET_SMTP_HOST", provider.smtp_host),
@@ -206,9 +207,9 @@ def check_configuration(provider: IntranetMailProvider) -> bool:
             passed = False
 
     for name, value in [
-        ("INTRANET_IMAP_SECURITY", provider.imap_security),
+        ("INTRANET_POP3_SECURITY", provider.pop3_security),
         ("INTRANET_SMTP_SECURITY", provider.smtp_security),
-        ("INTRANET_IMAP_AUTH", provider.imap_auth),
+        ("INTRANET_POP3_AUTH", provider.pop3_auth),
         ("INTRANET_SMTP_AUTH", provider.smtp_auth),
     ]:
         ok = value in {"ssl", "starttls", "plain"} if "SECURITY" in name else value == "password"
@@ -221,7 +222,7 @@ def check_configuration(provider: IntranetMailProvider) -> bool:
     print_result(
         "Provider is_configured()",
         provider_ready,
-        "Both IMAP and SMTP basic configuration detected."
+        "Both POP3 and SMTP basic configuration detected."
         if provider_ready
         else "Provider reports incomplete configuration.",
     )
@@ -230,99 +231,105 @@ def check_configuration(provider: IntranetMailProvider) -> bool:
 
 
 # ------------------------------------------------------------------------------
-# IMAP test
+# POP3 test
 # ------------------------------------------------------------------------------
 
 def test_incoming(provider: IntranetMailProvider) -> bool:
-    print_header("2. INCOMING MAIL / IMAP TEST")
+    print_header("2. INCOMING MAIL / POP3 TEST")
 
     print("Connecting to DS mailbox...")
-    print(f"Server : {provider.imap_host}:{provider.imap_port}")
-    print(f"Mode   : {provider.imap_security}")
+    print(f"Server : {provider.pop3_host}:{provider.pop3_port}")
+    print(f"Mode   : {provider.pop3_security}")
     print(f"User   : {provider.ds_mail_user}")
 
+    # unread_only=False reads the most recent messages WITHOUT touching the
+    # POP3 UIDL state file, so running this test never affects the real sync.
     emails = provider.fetch_incoming_emails(
         max_count=10,
-        unread_only=True,
+        unread_only=False,
     )
 
-    # The provider returns [] both when there are no unread messages and when
-    # the connection failed internally, so perform a direct connection check
+    # The provider returns [] both when the mailbox is empty and when the
+    # connection failed internally, so perform a direct connection check
     # as well for an unambiguous result.
 
-    client = provider._connect_imap()
+    client = provider._connect_pop3()
 
     if client is None:
         print_result(
-            "IMAP connection",
+            "POP3 connection",
             False,
             "Could not connect/login to the DS mailbox. Check host, port, security mode and credentials.",
         )
         return False
 
     try:
-        status, mailbox_info = client.select("INBOX")
-
-        if status != "OK":
-            print_result(
-                "IMAP INBOX selection",
-                False,
-                f"Server returned status={status}.",
-            )
-            return False
-
         print_result(
-            "IMAP connection + login",
+            "POP3 connection + login",
             True,
             "Successfully connected and authenticated to the DS mailbox.",
         )
 
+        try:
+            total_count, total_size = client.stat()
+        except Exception as exc:
+            print_result(
+                "POP3 mailbox status (STAT)",
+                False,
+                f"{type(exc).__name__}: {exc}",
+            )
+            return False
+
         print_result(
-            "IMAP INBOX selection",
+            "POP3 mailbox status (STAT)",
             True,
-            "DS mailbox INBOX opened successfully.",
+            f"{total_count} message(s) on the server, {total_size} bytes.",
         )
 
-        status, data = client.search(None, "UNSEEN")
+        try:
+            _, uidl_lines, _ = client.uidl()
+            listing = provider._parse_uidl_listing(uidl_lines)
+            seen = provider._load_state()["seen"]
+            new_count = sum(1 for _, uidl in listing if uidl not in seen)
 
-        if status == "OK" and data and data[0]:
-            unread_count = len(data[0].split())
-        else:
-            unread_count = 0
-
-        print_result(
-            "Unread message search",
-            status == "OK",
-            f"Unread messages currently available: {unread_count}",
-        )
+            print_result(
+                "UIDL support",
+                True,
+                f"Messages not yet imported by CDTRS: {new_count}",
+            )
+        except Exception as exc:
+            print_result(
+                "UIDL support",
+                False,
+                f"Server did not answer UIDL ({exc}). "
+                "Sync falls back to Message-ID de-duplication only.",
+            )
 
     finally:
         try:
-            client.close()
+            client.quit()
         except Exception:
-            pass
-
-        try:
-            client.logout()
-        except Exception:
-            pass
+            try:
+                client.close()
+            except Exception:
+                pass
 
     print()
     print(f"Fetched DTOs: {len(emails)}")
 
     if not emails:
-        print("NOTE: No unread emails were returned.")
-        print("      This is NOT an error if the DS mailbox has no unread mail.")
+        print("NOTE: No emails were returned.")
+        print("      This is NOT an error if the DS mailbox is empty.")
         print()
         print("For a complete test tomorrow:")
         print("  1. Send an email to the DS mailbox from another account.")
-        print("  2. Keep it unread.")
+        print("  2. Leave it in the mailbox.")
         print("  3. Run this test again.")
 
         return True
 
     print()
-    print("Unread incoming messages:")
+    print("Most recent incoming messages:")
 
     for index, item in enumerate(emails, start=1):
         print()
@@ -350,7 +357,7 @@ def test_incoming(provider: IntranetMailProvider) -> bool:
     print_result(
         "Incoming mail parsing",
         True,
-        f"Successfully parsed {len(emails)} unread message(s).",
+        f"Successfully parsed {len(emails)} message(s).",
     )
 
     return True
@@ -458,7 +465,7 @@ def main() -> int:
 
     print("This test uses the current intranet_provider.py implementation.")
     print("It uses two independent office mail accounts:")
-    print("  DS_MAIL_USER / DS_MAIL_PASS   -> incoming IMAP")
+    print("  DS_MAIL_USER / DS_MAIL_PASS   -> incoming POP3")
     print("  CDTRS_MAIL_USER / PASS        -> outgoing SMTP")
 
     try:
@@ -503,7 +510,7 @@ def main() -> int:
     )
 
     print_result(
-        "Incoming IMAP",
+        "Incoming POP3",
         incoming_ok,
     )
 

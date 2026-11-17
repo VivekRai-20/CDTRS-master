@@ -5,8 +5,24 @@
 QWidget {
     font-family: "Segoe UI";
     font-size: 14px;
-    background: #F5F7FA;
     color: #1F2937;
+}
+
+/* The page background is painted once, by the windows.  Containers inside
+   cards stay transparent, so they no longer show grey boxes on white cards. */
+QMainWindow,
+QDialog,
+LoginWindow {
+    background: #F5F7FA;
+}
+
+QScrollArea,
+QScrollArea > QWidget#qt_scrollarea_viewport {
+    background: transparent;
+}
+
+QStackedWidget {
+    background: transparent;
 }
 
 
@@ -155,4 +171,180 @@ QPushButton:hover {
     border: 1px dashed #CBD5E1;
     border-radius: 8px;
     color: #64748B;
+}
+
+/* =========================
+   READABILITY / CONTROLS
+   ========================= */
+
+/* Labels take the colour of whatever they sit on (white cards, coloured
+   badges) instead of painting a grey box of the page background. */
+QLabel {
+    background: transparent;
+}
+
+QCheckBox,
+QRadioButton {
+    background: transparent;
+    color: #1F2937;
+    spacing: 8px;
+}
+
+QCheckBox:disabled,
+QRadioButton:disabled {
+    color: #94A3B8;
+}
+
+/* Clearly visible check boxes: dark border on white, blue when ticked. */
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #475569;
+    border-radius: 4px;
+    background: #FFFFFF;
+}
+
+QCheckBox::indicator:hover {
+    border-color: #2563EB;
+}
+
+QCheckBox::indicator:checked {
+    border-color: #2563EB;
+    background: #2563EB;
+    image: url(@STYLES@/check.svg);
+}
+
+QCheckBox::indicator:disabled {
+    border-color: #CBD5E1;
+    background: #F1F5F9;
+}
+
+QCheckBox::indicator:checked:disabled {
+    border-color: #93C5FD;
+    background: #93C5FD;
+}
+
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #475569;
+    border-radius: 10px;
+    background: #FFFFFF;
+}
+
+QRadioButton::indicator:checked {
+    border: 5px solid #2563EB;
+    background: #FFFFFF;
+}
+
+QComboBox {
+    background: #FFFFFF;
+    color: #1F2937;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+
+QComboBox:disabled {
+    color: #94A3B8;
+    background: #F1F5F9;
+}
+
+QComboBox QAbstractItemView {
+    background: #FFFFFF;
+    color: #1F2937;
+    selection-background-color: #DBEAFE;
+    selection-color: #1E3A8A;
+    border: 1px solid #CBD5E1;
+}
+
+QTextEdit,
+QPlainTextEdit {
+    background: #FFFFFF;
+    color: #1F2937;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+}
+
+QLineEdit:disabled,
+QTextEdit:disabled,
+QPlainTextEdit:disabled {
+    background: #F1F5F9;
+    color: #64748B;
+}
+
+QLineEdit[readOnly="true"] {
+    background: #F8FAFC;
+    color: #1F2937;
+}
+
+QPushButton:disabled {
+    background: #CBD5E1;
+    color: #475569;
+}
+
+QTableView,
+QTableWidget,
+QListView,
+QListWidget,
+QTreeView {
+    background: #FFFFFF;
+    alternate-background-color: #F8FAFC;
+    color: #1F2937;
+    selection-background-color: #DBEAFE;
+    selection-color: #1E3A8A;
+    gridline-color: #E2E8F0;
+}
+
+QHeaderView::section {
+    background: #F1F5F9;
+    color: #334155;
+    border: none;
+    border-bottom: 1px solid #E2E8F0;
+    padding: 6px 8px;
+    font-weight: 600;
+}
+
+QToolTip {
+    background: #0F172A;
+    color: #FFFFFF;
+    border: none;
+    padding: 6px 8px;
+}
+
+QMenu {
+    background: #FFFFFF;
+    color: #1F2937;
+    border: 1px solid #CBD5E1;
+}
+
+QMenu::item:selected {
+    background: #DBEAFE;
+    color: #1E3A8A;
+}
+
+QMessageBox {
+    background: #FFFFFF;
+}
+
+QMessageBox QLabel {
+    color: #1F2937;
+}
+
+QTabBar::tab {
+    background: #E2E8F0;
+    color: #334155;
+    padding: 8px 14px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+
+QTabBar::tab:selected {
+    background: #FFFFFF;
+    color: #1E3A8A;
+    font-weight: 600;
+}
+
+QGroupBox {
+    color: #1F2937;
 }

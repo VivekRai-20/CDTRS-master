@@ -132,6 +132,16 @@ class DashboardPage(QWidget):
         header.addWidget(refresh, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
 
+        # Body: the dashboard content, and the notification panel beside it
+        # (when open) so the panel never covers the cards or the table.
+        self.body_row = QHBoxLayout()
+        self.body_row.setSpacing(16)
+        layout.addLayout(self.body_row, 1)
+        main_col = QVBoxLayout()
+        main_col.setSpacing(14)
+        self.body_row.addLayout(main_col, 1)
+        layout = main_col
+
         self.cards_host = QWidget()
         self.cards_grid = QGridLayout(self.cards_host)
         self.cards_grid.setContentsMargins(0, 0, 0, 0)
@@ -318,8 +328,9 @@ class DashboardPage(QWidget):
             self.notification_panel = NotificationPanel(
                 self
             )
-
-        self.notification_panel.refresh()
+            self.notification_panel.hide()
+            # Docked to the right of the content, not floating over it.
+            self.body_row.addWidget(self.notification_panel, 0)
 
         if self.notification_panel.isVisible():
 
@@ -327,24 +338,5 @@ class DashboardPage(QWidget):
 
             return
 
-        self.notification_panel.adjustSize()
-
-        panel_width = (
-            self.notification_panel.width()
-        )
-
-        x = (
-            self.width()
-            - panel_width
-            - 28
-        )
-
-        y = 65
-
-        self.notification_panel.move(
-            x,
-            y
-        )
-
+        self.notification_panel.refresh()
         self.notification_panel.show()
-        self.notification_panel.raise_()

@@ -210,7 +210,10 @@ async def lifespan(app: FastAPI):
             from mail.service import mail_service
             db = SessionLocal()
             try:
-                if mail_service.is_configured():
+                # Only when .env still holds a mailbox login; a login typed
+                # on the Inbox screen is never kept, so it is used by the
+                # Inbox's own Sync Now.
+                if mail_service.can_receive():
                     mail_service.sync_ds_mailbox(db)
             finally:
                 db.close()
@@ -573,6 +576,7 @@ def list_intake_attachments(
 
 @app.post(f"{API_V1}/intake/sync-outlook", tags=["Intake"])
 def sync_outlook(
+    payload: Optional[schemas.MailboxLoginRequest] = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
     ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
@@ -581,6 +585,10 @@ def sync_outlook(
         raise HTTPException(status_code=403, detail="Mailbox sync is a DS action.")
     from mail.service import mail_service
     with _MAIL_SYNC_LOCK:
+        if payload and payload.email and payload.password:
+            return mail_service.sync_ds_mailbox(
+                db, mailbox_user=payload.email, mailbox_password=payload.password
+            )
         return mail_service.sync_ds_mailbox(db)
 
 
@@ -1823,13 +1831,23 @@ def send_reminder(
     ctx: Optional[models.WorkContextMembership] = Depends(get_active_context),
 ):
     try:
-        sent = crud.send_manual_reminder(
+        result = crud.send_manual_reminder(
             db, document_id, current_user, _context_id(ctx),
             payload.work_item_id, payload.recipient_user_id, payload.message,
         )
     except Exception as exc:
         raise _handle(exc)
-    return schemas.ReminderSendResponse(sent=sent, detail=f"Reminder sent to {sent} recipient(s).")
+    count = result["sent"]
+    emailed = result["emailed"]
+    detail = f"Reminder sent to {count} recipient(s) in the app; {emailed} e-mailed."
+    if result["email_note"]:
+        detail += " " + result["email_note"]
+    return schemas.ReminderSendResponse(
+        sent=count,
+        emailed=emailed,
+        channel="in-app + email" if emailed else "in-app",
+        detail=detail,
+    )
 
 
 # =========================================================

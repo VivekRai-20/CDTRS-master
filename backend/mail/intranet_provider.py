@@ -1,11 +1,11 @@
 # ==============================================================================
 # CDTRS - Intranet / Office Mail Provider
-# Standard IMAP + SMTP
+# Standard POP3 + SMTP
 #
 # MAILBOX ARCHITECTURE
 # --------------------
 # INCOMING:
-#     DS mailbox -> IMAP -> CDTRS
+#     DS mailbox -> POP3 -> CDTRS
 #
 # OUTGOING:
 #     CDTRS application mailbox -> SMTP -> recipients
@@ -13,12 +13,16 @@
 # The DS mailbox and CDTRS application mailbox are independent.
 #
 # Supports:
-#     IMAP SSL/TLS
-#     IMAP STARTTLS
-#     IMAP plain/internal connection
+#     POP3 SSL/TLS        (POP3S, usually port 995)
+#     POP3 STARTTLS (STLS, usually port 110)
+#     POP3 plain/internal connection (usually port 110)
 #     SMTP SSL/TLS
 #     SMTP STARTTLS
 #     SMTP plain/internal connection
+#
+# POP3 has no server-side "seen" flag, so CDTRS remembers which messages it
+# has already imported by their POP3 UIDL (unique id) in a small JSON state
+# file.  Messages are left on the server; nothing is deleted.
 #
 # Authentication currently supports username/password.
 # OAuth2 can be added later if the office requires it.
@@ -26,10 +30,14 @@
 
 import os
 import ssl
+import json
 import email
+import email.utils
 import logging
-import imaplib
+import poplib
 import smtplib
+import tempfile
+import threading
 
 from email.header import decode_header
 from email.mime.multipart import MIMEMultipart
@@ -37,7 +45,8 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
 from datetime import datetime
-from typing import List, Optional
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 from .base import (
     BaseMailProvider,
@@ -48,12 +57,36 @@ from .base import (
 
 logger = logging.getLogger("cdtrs.mail.intranet")
 
-# Network timeout (seconds) for IMAP.  Without one, an unreachable mail
-# server blocks the mailbox sync for minutes.
+# Network timeout (seconds) for POP3.  Without one, an unreachable mail
+# server blocks the mailbox sync for minutes.  IMAP_TIMEOUT is still honoured
+# so existing .env files keep working.
 try:
-    _IMAP_TIMEOUT = float(os.getenv("IMAP_TIMEOUT", "20"))
+    _POP3_TIMEOUT = float(
+        os.getenv("POP3_TIMEOUT") or os.getenv("IMAP_TIMEOUT") or "20"
+    )
 except ValueError:
-    _IMAP_TIMEOUT = 20.0
+    _POP3_TIMEOUT = 20.0
+
+# Long mail lines (big HTML bodies, base64 without wrapping) can exceed
+# poplib's default 2048-byte line limit and abort the download.
+poplib._MAXLINE = max(getattr(poplib, "_MAXLINE", 2048), 1024 * 1024)
+
+# A message handed to the sync service but never confirmed through
+# mark_as_read() is usually one the service skipped as a duplicate (it is
+# already in the database).  It is offered again this many more times, in
+# case the import failed, and is then treated as already imported.
+_UNCONFIRMED_RETRIES = 3
+
+# Default location of the UIDL state file: backend/uploads/.mail_state/
+_DEFAULT_STATE_FILE = (
+    Path(__file__).resolve().parent.parent
+    / "uploads"
+    / ".mail_state"
+    / "pop3_uidl_state.json"
+)
+
+# Several syncs (timer + on-demand) can run at once in the same process.
+_STATE_LOCK = threading.Lock()
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -71,13 +104,24 @@ def _env_bool(name: str, default: bool = False) -> bool:
     }
 
 
-def _env_security(name: str, default: str) -> str:
-    value = os.getenv(name, default).strip().lower()
+def _env_first(*names: str, default: str = "") -> str:
+    """Returns the first non-empty environment variable among *names*."""
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and value.strip():
+            return value.strip()
+    return default
+
+
+def _normalize_security(value: str, default: str) -> str:
+    value = (value or "").strip().lower()
 
     aliases = {
         "tls": "starttls",
+        "stls": "starttls",
         "ssl/tls": "ssl",
         "ssl_tls": "ssl",
+        "pop3s": "ssl",
         "none": "plain",
         "": default,
     }
@@ -85,12 +129,25 @@ def _env_security(name: str, default: str) -> str:
     return aliases.get(value, value)
 
 
+def _env_security(name: str, default: str) -> str:
+    return _normalize_security(os.getenv(name, default), default)
+
+
+def _friendly_pop3_error(ex: Exception) -> str:
+    """A short message for the Inbox screen.  Never includes the password."""
+    if isinstance(ex, poplib.error_proto):
+        return "The mail server refused the login. Check the e-mail ID and password."
+    if isinstance(ex, (TimeoutError, ConnectionError, OSError)):
+        return f"Could not reach the mail server: {ex}"
+    return str(ex)
+
+
 class IntranetMailProvider(BaseMailProvider):
     """
-    Standard IMAP/SMTP provider for the CDTRS office mail system.
+    Standard POP3/SMTP provider for the CDTRS office mail system.
 
     Incoming mail:
-        DS mailbox via IMAP.
+        DS mailbox via POP3.
 
     Outgoing mail:
         CDTRS application mailbox via SMTP.
@@ -101,31 +158,63 @@ class IntranetMailProvider(BaseMailProvider):
     def __init__(self):
 
         # ==================================================================
-        # IMAP - DS MAILBOX
+        # POP3 - DS MAILBOX
         # ==================================================================
+        # INTRANET_POP3_* settings are preferred.  The old INTRANET_IMAP_*
+        # host/security/auth settings are used as a fallback so an existing
+        # .env keeps working; the IMAP port is NOT reused (993 is IMAP-only).
 
-        self.imap_host = os.getenv(
+        self.pop3_host = _env_first(
+            "INTRANET_POP3_HOST",
             "INTRANET_IMAP_HOST",
-            ""
-        ).strip()
-
-        self.imap_port = int(
-            os.getenv("INTRANET_IMAP_PORT", "993")
         )
 
         # Supported:
-        #   ssl
-        #   starttls
-        #   plain
-        self.imap_security = _env_security(
-            "INTRANET_IMAP_SECURITY",
-            "ssl"
+        #   ssl       (POP3S, default port 995)
+        #   starttls  (STLS,  default port 110)
+        #   plain     (       default port 110)
+        self.pop3_security = _normalize_security(
+            _env_first(
+                "INTRANET_POP3_SECURITY",
+                "INTRANET_IMAP_SECURITY",
+                default="ssl",
+            ),
+            "ssl",
         )
 
-        self.imap_auth = os.getenv(
+        default_port = "995" if self.pop3_security == "ssl" else "110"
+
+        try:
+            self.pop3_port = int(
+                _env_first("INTRANET_POP3_PORT", default=default_port)
+            )
+        except ValueError:
+            self.pop3_port = int(default_port)
+
+        self.pop3_auth = _env_first(
+            "INTRANET_POP3_AUTH",
             "INTRANET_IMAP_AUTH",
-            "password"
-        ).strip().lower()
+            default="password",
+        ).lower()
+
+        # Where the already-imported UIDLs are remembered.
+        self.pop3_state_file = Path(
+            _env_first(
+                "INTRANET_POP3_STATE_FILE",
+                default=str(_DEFAULT_STATE_FILE),
+            )
+        )
+
+        # Backwards-compatible names (diagnostic scripts print these).
+        self.imap_host = self.pop3_host
+        self.imap_port = self.pop3_port
+        self.imap_security = self.pop3_security
+        self.imap_auth = self.pop3_auth
+
+        # message_id -> UIDL for messages returned by the latest fetch,
+        # used by mark_as_read() to confirm the import.
+        self._fetched_uidls: Dict[str, str] = {}
+        self.last_connect_error = ""
 
         # DS mailbox credentials
         self.ds_mail_user = os.getenv(
@@ -205,15 +294,15 @@ class IntranetMailProvider(BaseMailProvider):
         Returns True only when both sides of the office-mail integration
         have the required basic configuration.
 
-        IMAP:
+        POP3:
             DS mailbox
 
         SMTP:
             CDTRS application mailbox
         """
 
-        imap_ready = bool(
-            self.imap_host
+        pop3_ready = bool(
+            self.pop3_host
             and self.ds_mail_user
         )
 
@@ -223,7 +312,37 @@ class IntranetMailProvider(BaseMailProvider):
             and self.sender_address
         )
 
-        return imap_ready and smtp_ready
+        return pop3_ready and smtp_ready
+
+    def is_receive_configured(self) -> bool:
+        """POP3 side only: a server and a mailbox login to read."""
+        return bool(self.pop3_host and self.ds_mail_user and self.ds_mail_pass)
+
+    def is_send_configured(self) -> bool:
+        """SMTP side only.  Outgoing notifications do not depend on the
+        mailbox that is read, so they keep working when the mailbox login
+        comes from the Inbox screen instead of .env."""
+        return bool(self.smtp_host and self.cdtrs_mail_user and self.sender_address)
+
+    def with_mailbox_login(self, username: str, password: str) -> "IntranetMailProvider":
+        """A copy of this provider that reads the given mailbox instead of
+        DS_MAIL_USER / DS_MAIL_PASS.  Server settings still come from .env.
+        The password is only held on the copy for the duration of one sync;
+        it is never written anywhere."""
+        import copy
+        import hashlib
+
+        clone = copy.copy(self)
+        clone._fetched_uidls = {}
+        clone.ds_mail_user = (username or "").strip()
+        clone.ds_mail_pass = password or ""
+        # Each mailbox remembers its own imported messages.
+        if clone.ds_mail_user.lower() != (self.ds_mail_user or "").lower():
+            tag = hashlib.sha1(clone.ds_mail_user.lower().encode("utf-8")).hexdigest()[:12]
+            clone.pop3_state_file = self.pop3_state_file.with_name(
+                f"pop3_uidl_state_{tag}.json"
+            )
+        return clone
 
     # ======================================================================
     # TLS CONTEXT
@@ -239,92 +358,176 @@ class IntranetMailProvider(BaseMailProvider):
         return context
 
     # ======================================================================
-    # IMAP CONNECTION - DS MAILBOX
+    # POP3 CONNECTION - DS MAILBOX
     # ======================================================================
 
-    def _connect_imap(self) -> Optional[imaplib.IMAP4]:
+    def _connect_pop3(self) -> Optional[poplib.POP3]:
+
+        client = None
+        self.last_connect_error = ""
 
         try:
 
-            if self.imap_security == "ssl":
+            if self.pop3_security == "ssl":
 
-                context = self._create_ssl_context()
-
-                client = imaplib.IMAP4_SSL(
-                    self.imap_host,
-                    self.imap_port,
-                    ssl_context=context,
-                    timeout=_IMAP_TIMEOUT,
+                client = poplib.POP3_SSL(
+                    self.pop3_host,
+                    self.pop3_port,
+                    timeout=_POP3_TIMEOUT,
+                    context=self._create_ssl_context(),
                 )
 
-            elif self.imap_security == "starttls":
+            elif self.pop3_security == "starttls":
 
-                client = imaplib.IMAP4(
-                    self.imap_host,
-                    self.imap_port,
-                    timeout=_IMAP_TIMEOUT,
+                client = poplib.POP3(
+                    self.pop3_host,
+                    self.pop3_port,
+                    timeout=_POP3_TIMEOUT,
                 )
 
-                context = self._create_ssl_context()
-
-                client.starttls(
-                    ssl_context=context
+                client.stls(
+                    context=self._create_ssl_context()
                 )
 
-            elif self.imap_security == "plain":
+            elif self.pop3_security == "plain":
 
-                client = imaplib.IMAP4(
-                    self.imap_host,
-                    self.imap_port,
-                    timeout=_IMAP_TIMEOUT,
+                client = poplib.POP3(
+                    self.pop3_host,
+                    self.pop3_port,
+                    timeout=_POP3_TIMEOUT,
                 )
 
             else:
 
                 raise ValueError(
-                    f"Unsupported IMAP security mode: "
-                    f"{self.imap_security}"
+                    f"Unsupported POP3 security mode: "
+                    f"{self.pop3_security}"
                 )
 
             # --------------------------------------------------------------
             # Authentication
             # --------------------------------------------------------------
 
-            if self.imap_auth == "password":
+            if self.pop3_auth == "password":
 
                 if not self.ds_mail_user or not self.ds_mail_pass:
                     raise ValueError(
                         "DS mailbox username/password is not configured."
                     )
 
-                client.login(
-                    self.ds_mail_user,
-                    self.ds_mail_pass,
-                )
+                client.user(self.ds_mail_user)
+                client.pass_(self.ds_mail_pass)
 
             else:
 
                 raise ValueError(
-                    f"Unsupported IMAP authentication mode: "
-                    f"{self.imap_auth}"
+                    f"Unsupported POP3 authentication mode: "
+                    f"{self.pop3_auth}"
                 )
 
             logger.info(
-                "Connected to DS mailbox via IMAP "
-                f"({self.imap_host}:{self.imap_port}, "
-                f"{self.imap_security})"
+                "Connected to DS mailbox via POP3 "
+                f"({self.pop3_host}:{self.pop3_port}, "
+                f"{self.pop3_security})"
             )
 
             return client
 
         except Exception as ex:
 
+            self.last_connect_error = _friendly_pop3_error(ex)
+
             logger.error(
-                "Failed to connect to DS mailbox via IMAP "
-                f"({self.imap_host}:{self.imap_port}): {ex}"
+                "Failed to connect to DS mailbox via POP3 "
+                f"({self.pop3_host}:{self.pop3_port}): {ex}"
             )
 
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    pass
+
             return None
+
+    # ======================================================================
+    # UIDL STATE (which messages were already imported)
+    # ======================================================================
+
+    def _load_state(self) -> dict:
+        """
+        State file layout:
+            {
+              "seen":    ["<uidl>", ...],      # imported (or given up on)
+              "pending": {"<uidl>": <count>}   # handed out, not confirmed
+            }
+        """
+
+        try:
+            with open(self.pop3_state_file, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+
+            return {
+                "seen": set(data.get("seen", [])),
+                "pending": dict(data.get("pending", {})),
+            }
+
+        except FileNotFoundError:
+            return {"seen": set(), "pending": {}}
+
+        except Exception as ex:
+            logger.warning(
+                f"Could not read POP3 state file "
+                f"{self.pop3_state_file}: {ex}. Starting fresh; "
+                "duplicates are still filtered by Message-ID."
+            )
+            return {"seen": set(), "pending": {}}
+
+    def _save_state(self, state: dict) -> None:
+
+        try:
+            self.pop3_state_file.parent.mkdir(parents=True, exist_ok=True)
+
+            payload = {
+                "seen": sorted(state["seen"]),
+                "pending": state["pending"],
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+            }
+
+            # Write atomically so a crash never leaves a half-written file.
+            fd, tmp_path = tempfile.mkstemp(
+                dir=str(self.pop3_state_file.parent),
+                prefix=".pop3_state_",
+                suffix=".tmp",
+            )
+
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(payload, fh, indent=1)
+
+            os.replace(tmp_path, self.pop3_state_file)
+
+        except Exception as ex:
+            logger.error(
+                f"Could not write POP3 state file "
+                f"{self.pop3_state_file}: {ex}"
+            )
+
+    @staticmethod
+    def _parse_uidl_listing(lines: List[bytes]) -> List[Tuple[int, str]]:
+        """Parses UIDL lines such as b'1 000001a2b3' into (num, uidl)."""
+
+        result: List[Tuple[int, str]] = []
+
+        for line in lines or []:
+
+            try:
+                text = line.decode("ascii", errors="replace").strip()
+                num_str, uidl = text.split(None, 1)
+                result.append((int(num_str), uidl.strip()))
+            except Exception:
+                continue
+
+        return result
 
     # ======================================================================
     # INCOMING MAIL - DS MAILBOX
@@ -335,8 +538,15 @@ class IntranetMailProvider(BaseMailProvider):
         max_count: int = 50,
         unread_only: bool = True,
     ) -> List[IncomingEmailDTO]:
+        """
+        Downloads messages from the DS mailbox via POP3.
 
-        if not self.is_configured():
+        unread_only=True returns only messages whose UIDL has not been
+        imported before ("new" mail).  unread_only=False returns the most
+        recent messages regardless of state.  Messages stay on the server.
+        """
+
+        if not self.is_receive_configured():
 
             logger.info(
                 "Intranet mail provider is not configured."
@@ -344,361 +554,301 @@ class IntranetMailProvider(BaseMailProvider):
 
             return []
 
-        client = self._connect_imap()
+        client = self._connect_pop3()
 
         if not client:
-            return []
+            # Let the sync report the real reason (wrong password, server
+            # unreachable) instead of "0 new e-mails".
+            raise RuntimeError(
+                self.last_connect_error
+                or "Could not connect to the mailbox."
+            )
 
         results: List[IncomingEmailDTO] = []
+        self._fetched_uidls = {}
 
         try:
 
-            status, _ = client.select("INBOX")
+            # --------------------------------------------------------------
+            # Message list with unique ids
+            # --------------------------------------------------------------
 
-            if status != "OK":
+            try:
+                _, uidl_lines, _ = client.uidl()
+                listing = self._parse_uidl_listing(uidl_lines)
+                uidl_supported = True
 
-                logger.error(
-                    "Could not select DS mailbox INBOX."
+            except poplib.error_proto as ex:
+                # Very old servers may not support UIDL.  Fall back to
+                # message numbers; Message-ID still prevents duplicates.
+                logger.warning(
+                    f"POP3 server does not support UIDL ({ex}); "
+                    "falling back to message numbers."
                 )
+                count, _ = client.stat()
+                listing = [(n, "") for n in range(1, count + 1)]
+                uidl_supported = False
 
+            if not listing:
                 return []
 
-            search_crit = (
-                "UNSEEN"
-                if unread_only
-                else "ALL"
-            )
+            with _STATE_LOCK:
 
-            status, msg_nums = client.search(
-                None,
-                search_crit,
-            )
+                state = self._load_state()
 
-            if status != "OK":
-                return []
+                if uidl_supported:
 
-            if not msg_nums or not msg_nums[0]:
-                return []
+                    on_server = {uidl for _, uidl in listing}
 
-            num_list = msg_nums[0].split()
+                    # Forget messages that were removed from the server so
+                    # the state file does not grow forever.
+                    state["seen"] &= on_server
+                    state["pending"] = {
+                        u: c
+                        for u, c in state["pending"].items()
+                        if u in on_server
+                    }
 
-            # Most recent first
-            num_list = num_list[-max_count:][::-1]
+                    # Unconfirmed messages: retry a few times, then give up
+                    # (the service most likely skipped them as duplicates).
+                    for uidl, attempts in list(state["pending"].items()):
+                        if attempts > _UNCONFIRMED_RETRIES:
+                            state["seen"].add(uidl)
+                            del state["pending"][uidl]
 
-            for num in num_list:
+                if unread_only and uidl_supported:
+                    candidates = [
+                        (num, uidl)
+                        for num, uidl in listing
+                        if uidl not in state["seen"]
+                    ]
+                else:
+                    candidates = list(listing)
+
+                # POP3 numbers messages oldest first; most recent first.
+                candidates = candidates[-max_count:][::-1]
+
+                if uidl_supported and unread_only:
+                    for _, uidl in candidates:
+                        state["pending"][uidl] = (
+                            state["pending"].get(uidl, 0) + 1
+                        )
+                    self._save_state(state)
+
+            # --------------------------------------------------------------
+            # Download and parse
+            # --------------------------------------------------------------
+
+            for num, uidl in candidates:
 
                 try:
 
-                    res, data = client.fetch(
-                        num,
-                        "(RFC822)",
+                    _, lines, _ = client.retr(num)
+
+                    raw_email = b"\r\n".join(lines) + b"\r\n"
+
+                    dto = self._parse_message(
+                        raw_email,
+                        uidl or str(num),
                     )
 
-                    if (
-                        res != "OK"
-                        or not data
-                        or not isinstance(data[0], tuple)
-                    ):
-                        continue
-
-                    raw_email = data[0][1]
-
-                    msg = email.message_from_bytes(
-                        raw_email
-                    )
-
-                    # ------------------------------------------------------
-                    # Subject
-                    # ------------------------------------------------------
-
-                    subject_header = msg.get(
-                        "Subject",
-                        "(No Subject)"
-                    )
-
-                    subject = self._decode_header_str(
-                        subject_header
-                    )
-
-                    # ------------------------------------------------------
-                    # Sender
-                    # ------------------------------------------------------
-
-                    from_header = msg.get(
-                        "From",
-                        ""
-                    )
-
-                    sender_name, sender_email = (
-                        self._parse_from_header(
-                            from_header
-                        )
-                    )
-
-                    # ------------------------------------------------------
-                    # Message ID
-                    # ------------------------------------------------------
-
-                    msg_id = msg.get(
-                        "Message-ID",
-                        (
-                            f"intranet-"
-                            f"{num.decode('utf-8')}-"
-                            f"{int(datetime.now().timestamp())}"
-                        ),
-                    )
-
-                    msg_id = msg_id.strip(
-                        "<>"
-                    ).strip()
-
-                    # ------------------------------------------------------
-                    # Date
-                    # ------------------------------------------------------
-
-                    date_header = msg.get(
-                        "Date"
-                    )
-
-                    received_at = datetime.now()
-
-                    if date_header:
-
-                        try:
-
-                            parsed_date = (
-                                email.utils
-                                .parsedate_to_datetime(
-                                    date_header
-                                )
-                            )
-
-                            if parsed_date:
-
-                                received_at = (
-                                    parsed_date
-                                    .replace(tzinfo=None)
-                                )
-
-                        except Exception:
-                            pass
-
-                    # ------------------------------------------------------
-                    # Body and attachments
-                    # ------------------------------------------------------
-
-                    body_text = ""
-                    body_html = ""
-
-                    attachments: List[
-                        EmailAttachmentDTO
-                    ] = []
-
-                    if msg.is_multipart():
-
-                        for part in msg.walk():
-
-                            content_type = (
-                                part.get_content_type()
-                            )
-
-                            content_disposition = str(
-                                part.get(
-                                    "Content-Disposition",
-                                    ""
-                                )
-                            )
-
-                            filename = (
-                                part.get_filename()
-                            )
-
-                            # --------------------------------------------------
-                            # Attachment
-                            # --------------------------------------------------
-
-                            if filename:
-
-                                filename = (
-                                    self._decode_header_str(
-                                        filename
-                                    )
-                                )
-
-                                file_bytes = (
-                                    part.get_payload(
-                                        decode=True
-                                    )
-                                )
-
-                                if file_bytes:
-
-                                    attachments.append(
-                                        EmailAttachmentDTO(
-                                            filename=filename,
-                                            content_type=(
-                                                content_type
-                                                or
-                                                "application/octet-stream"
-                                            ),
-                                            size_bytes=len(
-                                                file_bytes
-                                            ),
-                                            content_bytes=file_bytes,
-                                        )
-                                    )
-
-                            elif (
-                                "attachment"
-                                in content_disposition
-                            ):
-
-                                file_bytes = (
-                                    part.get_payload(
-                                        decode=True
-                                    )
-                                )
-
-                                if file_bytes:
-
-                                    attachments.append(
-                                        EmailAttachmentDTO(
-                                            filename="attachment",
-                                            content_type=(
-                                                content_type
-                                                or
-                                                "application/octet-stream"
-                                            ),
-                                            size_bytes=len(
-                                                file_bytes
-                                            ),
-                                            content_bytes=file_bytes,
-                                        )
-                                    )
-
-                            # --------------------------------------------------
-                            # Text
-                            # --------------------------------------------------
-
-                            elif (
-                                content_type == "text/plain"
-                                and not body_text
-                            ):
-
-                                payload = (
-                                    part.get_payload(
-                                        decode=True
-                                    )
-                                )
-
-                                if payload:
-
-                                    body_text = payload.decode(
-                                        part.get_content_charset()
-                                        or "utf-8",
-                                        errors="replace",
-                                    )
-
-                            elif (
-                                content_type == "text/html"
-                                and not body_html
-                            ):
-
-                                payload = (
-                                    part.get_payload(
-                                        decode=True
-                                    )
-                                )
-
-                                if payload:
-
-                                    body_html = payload.decode(
-                                        part.get_content_charset()
-                                        or "utf-8",
-                                        errors="replace",
-                                    )
-
-                    else:
-
-                        content_type = (
-                            msg.get_content_type()
-                        )
-
-                        payload = (
-                            msg.get_payload(
-                                decode=True
-                            )
-                        )
-
-                        if payload:
-
-                            decoded = payload.decode(
-                                msg.get_content_charset()
-                                or "utf-8",
-                                errors="replace",
-                            )
-
-                            if content_type == "text/html":
-                                body_html = decoded
-                            else:
-                                body_text = decoded
-
-                    # ------------------------------------------------------
-                    # DTO
-                    # ------------------------------------------------------
-
-                    dto = IncomingEmailDTO(
-                        message_id=msg_id,
-                        sender_name=(
-                            sender_name
-                            or "External Sender"
-                        ),
-                        sender_email=(
-                            sender_email
-                            or ""
-                        ),
-                        subject=subject,
-                        body_text=(
-                            body_text or None
-                        ),
-                        body_html=(
-                            body_html or None
-                        ),
-                        received_at=received_at,
-                        has_attachments=(
-                            len(attachments) > 0
-                        ),
-                        attachments=attachments,
-                    )
+                    if uidl:
+                        self._fetched_uidls[dto.message_id] = uidl
 
                     results.append(dto)
 
                 except Exception as ex:
 
                     logger.warning(
-                        "Error parsing IMAP message "
-                        f"{num}: {ex}"
+                        "Error reading POP3 message "
+                        f"{num} ({uidl}): {ex}"
                     )
 
         except Exception as ex:
 
             logger.error(
-                f"Error during DS IMAP fetch: {ex}"
+                f"Error during DS POP3 fetch: {ex}"
             )
 
         finally:
 
+            # QUIT ends the session.  No DELE commands are ever sent, so
+            # nothing is removed from the mailbox.
             try:
-                client.close()
+                client.quit()
             except Exception:
-                pass
-
-            try:
-                client.logout()
-            except Exception:
-                pass
+                try:
+                    client.close()
+                except Exception:
+                    pass
 
         return results
+
+    # ======================================================================
+    # MESSAGE PARSING
+    # ======================================================================
+
+    def _parse_message(
+        self,
+        raw_email: bytes,
+        fallback_id: str,
+    ) -> IncomingEmailDTO:
+
+        msg = email.message_from_bytes(
+            raw_email
+        )
+
+        # ------------------------------------------------------------------
+        # Subject
+        # ------------------------------------------------------------------
+
+        subject = self._decode_header_str(
+            msg.get("Subject", "(No Subject)")
+        )
+
+        # ------------------------------------------------------------------
+        # Sender
+        # ------------------------------------------------------------------
+
+        sender_name, sender_email = self._parse_from_header(
+            msg.get("From", "")
+        )
+
+        # ------------------------------------------------------------------
+        # Message ID (stable fallback: the POP3 UIDL)
+        # ------------------------------------------------------------------
+
+        msg_id = str(
+            msg.get("Message-ID", "") or ""
+        ).strip().strip("<>").strip()
+
+        if not msg_id:
+            msg_id = f"intranet-pop3-{fallback_id}"
+
+        # ------------------------------------------------------------------
+        # Date
+        # ------------------------------------------------------------------
+
+        received_at = datetime.now()
+        date_header = msg.get("Date")
+
+        if date_header:
+
+            try:
+
+                parsed_date = email.utils.parsedate_to_datetime(
+                    date_header
+                )
+
+                if parsed_date:
+                    received_at = parsed_date.replace(tzinfo=None)
+
+            except Exception:
+                pass
+
+        # ------------------------------------------------------------------
+        # Body and attachments
+        # ------------------------------------------------------------------
+
+        body_text = ""
+        body_html = ""
+
+        attachments: List[EmailAttachmentDTO] = []
+
+        if msg.is_multipart():
+
+            for part in msg.walk():
+
+                content_type = part.get_content_type()
+
+                content_disposition = str(
+                    part.get("Content-Disposition", "")
+                )
+
+                filename = part.get_filename()
+
+                # ----------------------------------------------------------
+                # Attachment
+                # ----------------------------------------------------------
+
+                if filename or "attachment" in content_disposition:
+
+                    file_bytes = part.get_payload(decode=True)
+
+                    if file_bytes:
+
+                        attachments.append(
+                            EmailAttachmentDTO(
+                                filename=(
+                                    self._decode_header_str(filename)
+                                    if filename
+                                    else "attachment"
+                                ),
+                                content_type=(
+                                    content_type
+                                    or "application/octet-stream"
+                                ),
+                                size_bytes=len(file_bytes),
+                                content_bytes=file_bytes,
+                            )
+                        )
+
+                # ----------------------------------------------------------
+                # Text
+                # ----------------------------------------------------------
+
+                elif content_type == "text/plain" and not body_text:
+
+                    payload = part.get_payload(decode=True)
+
+                    if payload:
+                        body_text = payload.decode(
+                            part.get_content_charset() or "utf-8",
+                            errors="replace",
+                        )
+
+                elif content_type == "text/html" and not body_html:
+
+                    payload = part.get_payload(decode=True)
+
+                    if payload:
+                        body_html = payload.decode(
+                            part.get_content_charset() or "utf-8",
+                            errors="replace",
+                        )
+
+        else:
+
+            content_type = msg.get_content_type()
+            payload = msg.get_payload(decode=True)
+
+            if payload:
+
+                decoded = payload.decode(
+                    msg.get_content_charset() or "utf-8",
+                    errors="replace",
+                )
+
+                if content_type == "text/html":
+                    body_html = decoded
+                else:
+                    body_text = decoded
+
+        # ------------------------------------------------------------------
+        # DTO
+        # ------------------------------------------------------------------
+
+        return IncomingEmailDTO(
+            message_id=msg_id,
+            sender_name=sender_name or "External Sender",
+            sender_email=sender_email or "",
+            subject=subject,
+            body_text=body_text or None,
+            body_html=body_html or None,
+            received_at=received_at,
+            has_attachments=len(attachments) > 0,
+            attachments=attachments,
+        )
 
     # ======================================================================
     # MARK AS READ
@@ -708,9 +858,23 @@ class IntranetMailProvider(BaseMailProvider):
         self,
         message_id: str
     ) -> bool:
+        """
+        POP3 has no read flag.  Called by the sync service after a message
+        was stored in CDTRS: records its UIDL as imported so it is not
+        downloaded again.
+        """
 
-        # Current sync fetches RFC822 from UNSEEN messages.
-        # IMAP normally marks them as seen when fetched.
+        uidl = self._fetched_uidls.pop(message_id, None)
+
+        if not uidl:
+            return True
+
+        with _STATE_LOCK:
+            state = self._load_state()
+            state["seen"].add(uidl)
+            state["pending"].pop(uidl, None)
+            self._save_state(state)
+
         return True
 
     # ======================================================================
@@ -797,7 +961,7 @@ class IntranetMailProvider(BaseMailProvider):
         email_dto: OutgoingEmailDTO
     ) -> bool:
 
-        if not self.is_configured():
+        if not self.is_send_configured():
 
             logger.warning(
                 "Intranet SMTP is not configured. "

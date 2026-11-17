@@ -76,8 +76,9 @@ class MainWindow(QMainWindow):
             f"CDTRS - {self.role} ({self.username})"
         )
 
-        self.resize(1180, 760)
+        # Open at a size that suits the screen instead of a fixed 1180x760.
         self.setMinimumSize(900, 560)
+        self._fit_to_screen()
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -258,13 +259,10 @@ class MainWindow(QMainWindow):
         stack_layout.setContentsMargins(0, 0, 0, 0)
         stack_layout.setSpacing(0)
         
-        stack_layout.addStretch(1)
-        self.stack.setMaximumWidth(1400)
-        
-        # Using size policy to allow it to expand up to max width
+        # The pages use the full width of the window: no maximum width and
+        # no side stretches, so large screens are not left with empty bands.
         self.stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        stack_layout.addWidget(self.stack, 10)
-        stack_layout.addStretch(1)
+        stack_layout.addWidget(self.stack, 1)
 
         main_layout.addWidget(stack_container, 1)
 
@@ -292,6 +290,27 @@ class MainWindow(QMainWindow):
             self._apply_context(context)
         else:
             self._navigate_to_first_allowed_page()
+
+    def _fit_to_screen(self) -> None:
+        """Take about 90% of the available screen, centred.  Falls back to
+        the previous default size when no screen is known."""
+        try:
+            from PySide6.QtGui import QGuiApplication
+
+            screen = QGuiApplication.primaryScreen()
+            area = screen.availableGeometry() if screen else None
+        except Exception:
+            area = None
+        if area is None or area.width() <= 0:
+            self.resize(1180, 760)
+            return
+        width = max(900, min(area.width(), int(area.width() * 0.9)))
+        height = max(560, min(area.height(), int(area.height() * 0.9)))
+        self.resize(width, height)
+        self.move(
+            area.x() + (area.width() - width) // 2,
+            area.y() + (area.height() - height) // 2,
+        )
 
     # ==================================================================
     # ADMIN PAGE INITIALIZATION

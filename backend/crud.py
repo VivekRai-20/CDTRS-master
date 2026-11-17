@@ -12,6 +12,7 @@ import json
 import re
 import os
 import threading
+import logging
 from datetime import datetime, timedelta, date
 from typing import Any, Dict, List, Optional
 
@@ -23,6 +24,8 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 import workflow
+
+logger = logging.getLogger("cdtrs.crud")
 from models import (
     AttachmentType,
     MessageProcessingStatus,
@@ -911,6 +914,9 @@ def send_manual_reminder(
             work_item_id=item.id,
             title=f"{doc.reference_no}: reminder",
             message=body,
+            # The e-mail is sent below, after the commit, so the result can
+            # be reported back to the person who pressed Send Reminder.
+            email=False,
         )
         sent += 1
 
@@ -924,7 +930,47 @@ def send_manual_reminder(
         details=body,
     )
     db.commit()
-    return sent
+    recipients = [(item.assigned_to_user_id, item.id, item.branch_id) for item in targets]
+    emailed, email_note = _email_manual_reminder(db, doc, recipients, body)
+    return {"sent": sent, "emailed": emailed, "email_note": email_note}
+
+
+def _email_manual_reminder(db: Session, doc, recipients, body: str):
+    """Send the reminder e-mails and say what happened.  A failure never undoes
+    the in-app reminder, which is already saved."""
+    try:
+        from mail.service import mail_service
+    except Exception as exc:
+        return 0, f"E-mail is unavailable: {exc}"
+    if not workflow._email_enabled(db):
+        return 0, "E-mail notifications are switched off in System Configuration."
+    if not mail_service.can_send():
+        return 0, "Outgoing mail (SMTP) is not configured on the server, so no e-mail was sent."
+    emailed = 0
+    failed: List[str] = []
+    for user_id, work_item_id, branch_id in recipients:
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        name = user.full_name if user else f"user {user_id}"
+        try:
+            ok = mail_service.send_workflow_notification(
+                db=db,
+                doc_id=doc.doc_id,
+                recipient_user_id=user_id,
+                title=f"Action Reminder: {doc.title}",
+                message=body,
+                work_item_id=work_item_id,
+                branch_id=branch_id,
+            )
+        except Exception as exc:
+            logger.warning(f"Reminder e-mail to user {user_id} failed: {exc}")
+            ok = False
+        if ok:
+            emailed += 1
+        else:
+            failed.append(name)
+    if failed:
+        return emailed, "No e-mail could be sent to: " + ", ".join(failed) + " (check their e-mail address and the server log)."
+    return emailed, ""
 
 
 # =========================================================

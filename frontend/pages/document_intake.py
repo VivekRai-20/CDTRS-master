@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QScrollArea,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -74,11 +75,12 @@ class DocumentIntakePage(QWidget):
             "Verify extracted metadata and routing intelligence from incoming dispatches before committing to CDTRS workflow."
         )
         subtitle.setObjectName("pageSubtitle")
+        title.setWordWrap(True)
+        subtitle.setWordWrap(True)
 
         vbox.addWidget(title)
         vbox.addWidget(subtitle)
-        header_layout.addLayout(vbox)
-        header_layout.addStretch()
+        header_layout.addLayout(vbox, 1)
 
         # Manual File Upload Button
         manual_btn = QPushButton("📁 Manual Intake / Upload File")
@@ -133,10 +135,9 @@ class DocumentIntakePage(QWidget):
 
         # Compact OCR Status Badge (Clean Neutral)
         self.ocr_status_frame = QFrame()
-        self.ocr_status_frame.setStyleSheet(
-            "background-color: #F8FAFC; border: 1px solid #E2E8F0;"
-            " border-radius: 5px; padding: 8px;"
-        )
+        self.ocr_status_frame.setObjectName("scoped_ocr_status_frame_136")
+        self.ocr_status_frame.setStyleSheet("#scoped_ocr_status_frame_136 {" + "background-color: #F8FAFC; border: 1px solid #E2E8F0;"
+            " border-radius: 5px; padding: 8px;" + "}")
         ocr_hlayout = QHBoxLayout(self.ocr_status_frame)
         ocr_hlayout.setContentsMargins(10, 6, 10, 6)
         ocr_hlayout.setSpacing(8)
@@ -158,10 +159,9 @@ class DocumentIntakePage(QWidget):
 
         # Collapsible OCR Fields panel
         self.ocr_fields_frame = QFrame()
-        self.ocr_fields_frame.setStyleSheet(
-            "background: #F8FAFC; border: 1px solid #E2E8F0;"
-            " border-radius: 5px; padding: 4px;"
-        )
+        self.ocr_fields_frame.setObjectName("scoped_ocr_fields_frame_161")
+        self.ocr_fields_frame.setStyleSheet("#scoped_ocr_fields_frame_161 {" + "background: #F8FAFC; border: 1px solid #E2E8F0;"
+            " border-radius: 5px; padding: 4px;" + "}")
         ocr_f_layout = QVBoxLayout(self.ocr_fields_frame)
         ocr_f_layout.setContentsMargins(8, 6, 8, 6)
         ocr_f_layout.setSpacing(3)
@@ -238,6 +238,9 @@ class DocumentIntakePage(QWidget):
         form.addRow("Target Deadline:", self.deadline_input)
 
         info_layout.addLayout(form)
+        # Keep the fields together at the top of the card instead of
+        # spreading the title and form over the full height of the preview.
+        info_layout.addStretch(1)
         content_layout.addWidget(info_card, 2)
         main_layout.addLayout(content_layout)
 
@@ -343,13 +346,29 @@ class DocumentIntakePage(QWidget):
         self.clear_btn.clicked.connect(self.clear_form)
         action_bar.addWidget(self.clear_btn)
 
-        self.submit_btn = QPushButton("Confirm & Send for Director Review")
+        self.submit_btn = QPushButton("Confirm && Send for Director Review")
         self.submit_btn.setStyleSheet("background-color: #0F172A; color: white; font-size: 13px; font-weight: 600; padding: 9px 24px; border-radius: 6px;")
         self.submit_btn.clicked.connect(self.save_and_confirm_routing)
         action_bar.addWidget(self.submit_btn)
 
         main_layout.addLayout(action_bar)
-        self.setLayout(main_layout)
+
+        # The page scrolls on small screens instead of squeezing the fields
+        # until their text is cut off; on large screens it simply fills the
+        # window.
+        content = QWidget()
+        content.setObjectName("intakeContent")
+        content.setStyleSheet("#intakeContent { background: transparent; }")
+        content.setLayout(main_layout)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(content)
+        outer = QVBoxLayout()
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
+        self.setLayout(outer)
 
     # ====================================
     # ACTIONS & DEBUG LOGGING

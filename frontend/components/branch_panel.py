@@ -217,9 +217,8 @@ class WorkItemCard(QFrame):
 
     def _progress_block(self, update) -> QWidget:
         block = QFrame()
-        block.setStyleSheet(
-            "background-color: #F8FAFC; border-left: 2px solid #CBD5E1; border-radius: 3px;"
-        )
+        block.setObjectName("scoped_block_220")
+        block.setStyleSheet("#scoped_block_220 {" + "background-color: #F8FAFC; border-left: 2px solid #CBD5E1; border-radius: 3px;" + "}")
         inner = QVBoxLayout(block)
         inner.setContentsMargins(10, 7, 10, 7)
         inner.setSpacing(3)

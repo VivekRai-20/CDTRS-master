@@ -255,8 +255,9 @@ class RoutingDialog(_BaseDialog):
             return
 
         box = QFrame()
+        box.setObjectName("scoped_box_258")
         box.setStyleSheet(
-            "QFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; }"
+            "QFrame#scoped_box_258 { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; }"
         )
         layout = QVBoxLayout(box)
         layout.setContentsMargins(10, 8, 10, 8)
@@ -308,8 +309,9 @@ class RoutingDialog(_BaseDialog):
 
     def _add_row(self, prefill: bool = False) -> None:
         card = QFrame()
+        card.setObjectName("scoped_card_311")
         card.setStyleSheet(
-            "QFrame { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 5px; }"
+            "QFrame#scoped_card_311 { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 5px; }"
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -323,7 +325,7 @@ class RoutingDialog(_BaseDialog):
         top.addWidget(type_combo, 1)
 
         remove_btn = QPushButton("Remove")
-        remove_btn.setStyleSheet("color: #B91C1C; border: none; font-size: 11px;")
+        remove_btn.setStyleSheet("color: #B91C1C; background: transparent; border: none; font-size: 11px;")
         top.addWidget(remove_btn)
         layout.addLayout(top)
 
@@ -626,12 +628,12 @@ class ProgressDialog(_BaseDialog):
         self.file_label.setStyleSheet("color: #64748B; font-size: 11px;")
         attach = QPushButton("Attach supporting file")
         attach.setStyleSheet(
-            "background-color: #F8FAFC; border: 1px solid #CBD5E1; padding: 6px 12px; "
+            "background-color: #F8FAFC; color: #0F172A; border: 1px solid #CBD5E1; padding: 6px 12px; "
             "border-radius: 4px; font-size: 11px; font-weight: 600;"
         )
         attach.clicked.connect(self._pick_file)
         clear = QPushButton("Clear")
-        clear.setStyleSheet("color: #B91C1C; border: none; font-size: 11px;")
+        clear.setStyleSheet("color: #B91C1C; background: transparent; border: none; font-size: 11px;")
         clear.clicked.connect(self._clear_file)
         file_row.addWidget(attach)
         file_row.addWidget(clear)
@@ -730,12 +732,12 @@ class SubmitWorkDialog(_BaseDialog):
         self.file_label.setStyleSheet("color: #64748B; font-size: 11px;")
         attach = QPushButton("Attach final file")
         attach.setStyleSheet(
-            "background-color: #F8FAFC; border: 1px solid #CBD5E1; padding: 6px 12px; "
+            "background-color: #F8FAFC; color: #0F172A; border: 1px solid #CBD5E1; padding: 6px 12px; "
             "border-radius: 4px; font-size: 11px; font-weight: 600;"
         )
         attach.clicked.connect(self._pick_file)
         clear = QPushButton("Clear")
-        clear.setStyleSheet("color: #B91C1C; border: none; font-size: 11px;")
+        clear.setStyleSheet("color: #B91C1C; background: transparent; border: none; font-size: 11px;")
         clear.clicked.connect(self._clear_file)
         file_row.addWidget(attach)
         file_row.addWidget(clear)

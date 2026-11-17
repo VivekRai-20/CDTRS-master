@@ -138,7 +138,32 @@ class MailService:
             return False
         return self.get_provider(target).is_configured()
 
-    def sync_ds_mailbox(self, db: Session, max_count: int = 50, channel: Optional[str] = None) -> schemas.OutlookSyncResponse:
+    def can_receive(self, channel: Optional[str] = None) -> bool:
+        """The mailbox can be read (sync)."""
+        target = (channel or self.get_default_channel()).lower()
+        if target in MAIL_DISABLED_VALUES:
+            return False
+        provider = self.get_provider(target)
+        check = getattr(provider, "is_receive_configured", provider.is_configured)
+        return check()
+
+    def can_send(self, channel: Optional[str] = None) -> bool:
+        """Notification e-mails can be sent."""
+        target = (channel or self.get_default_channel()).lower()
+        if target in MAIL_DISABLED_VALUES:
+            return False
+        provider = self.get_provider(target)
+        check = getattr(provider, "is_send_configured", provider.is_configured)
+        return check()
+
+    def sync_ds_mailbox(
+        self,
+        db: Session,
+        max_count: int = 50,
+        channel: Optional[str] = None,
+        mailbox_user: Optional[str] = None,
+        mailbox_password: Optional[str] = None,
+    ) -> schemas.OutlookSyncResponse:
         """
         Synchronizes the DS mailbox (via Cloud Outlook Graph API or Local Intranet IMAP):
         1. Checks configuration.
@@ -147,16 +172,39 @@ class MailService:
         4. Persists attachments to server filesystem (uploads/<year>/intake_<msg_id>/<file>).
         5. Registers IncomingMessage and Attachment records.
         """
-        active_channel = channel or self.get_default_channel()
+        active_channel = (channel or self.get_default_channel()).lower()
         provider = self.get_provider(active_channel)
-        channel_label = "Intranet IMAP" if active_channel in ("intranet", "local", "smtp_imap") else "Outlook"
+        channel_label = "Intranet POP3" if active_channel in ("intranet", "local", "smtp_imap", "gov_mail") else "Outlook"
 
-        if not self.is_configured(active_channel):
+        # The mailbox login entered on the Inbox screen replaces
+        # DS_MAIL_USER / DS_MAIL_PASS from .env for this sync only.
+        if mailbox_user and mailbox_password and active_channel not in MAIL_DISABLED_VALUES:
+            if not hasattr(provider, "with_mailbox_login"):
+                return schemas.OutlookSyncResponse(
+                    status="not_configured",
+                    synced_count=0,
+                    ignored_duplicates=0,
+                    message=(
+                        f"Signing in with an e-mail ID and password needs the office mail server "
+                        f"(MAIL_CHANNEL=intranet). The current channel is '{active_channel}'."
+                    ),
+                )
+            provider = provider.with_mailbox_login(mailbox_user, mailbox_password)
+            if not provider.is_receive_configured():
+                return schemas.OutlookSyncResponse(
+                    status="not_configured",
+                    synced_count=0,
+                    ignored_duplicates=0,
+                    message="The mail server is not set. Add INTRANET_POP3_HOST to backend/.env.",
+                )
+        elif active_channel in MAIL_DISABLED_VALUES or not (
+            getattr(provider, "is_receive_configured", provider.is_configured)()
+        ):
             return schemas.OutlookSyncResponse(
                 status="not_configured",
                 synced_count=0,
                 ignored_duplicates=0,
-                message=f"{channel_label} mail integration is not configured. Check your environment settings."
+                message=f"{channel_label} mail integration is not configured. Enter your mailbox e-mail ID and password on the Inbox screen."
             )
 
         try:
@@ -245,7 +293,8 @@ class MailService:
                 "attachments_count": len(email.attachments)
             })
 
-        msg_text = f"Successfully synced {synced_count} new email(s) from DS Outlook mailbox."
+        mailbox_label = getattr(provider, "ds_mail_user", "") or "the DS mailbox"
+        msg_text = f"Successfully synced {synced_count} new email(s) from {mailbox_label}."
         if ignored_count > 0:
             msg_text += f" ({ignored_count} duplicate(s) skipped)."
 
@@ -371,7 +420,7 @@ class MailService:
 
         provider = self.get_provider(use_channel)
 
-        if not self.is_configured(use_channel):
+        if not self.can_send(use_channel):
             logger.info(f"Mail provider '{use_channel}' not configured. Notification logged to database only.")
             return False
 

@@ -32,8 +32,8 @@ class DocumentService:
     def get_intake_items(self) -> List[Dict[str, Any]]:
         return get_repository().get_intake_items()
 
-    def sync_outlook(self) -> Dict[str, Any]:
-        return get_repository().sync_outlook()
+    def sync_outlook(self, email: Optional[str] = None, password: Optional[str] = None) -> Dict[str, Any]:
+        return get_repository().sync_outlook(email, password)
 
     def process_intake(self, intake_id: int, payload: Dict[str, Any]) -> Optional[DocumentModel]:
         return get_repository().process_intake(intake_id, payload)

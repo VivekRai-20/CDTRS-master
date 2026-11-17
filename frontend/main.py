@@ -19,10 +19,16 @@ from ui.login import LoginWindow
 
 app = QApplication(sys.argv)
 
+# Stay light even when Windows is in dark mode.
+from ui.light_theme import apply_light_theme
+apply_light_theme(app)
+
 theme_path = os.path.join(FRONTEND_DIR, "styles", "theme.qss")
 if os.path.exists(theme_path):
     with open(theme_path, "r", encoding="utf-8") as file:
-        app.setStyleSheet(file.read())
+        # @STYLES@ points image urls (check mark) at this styles folder.
+        styles_dir = os.path.dirname(theme_path).replace("\\", "/")
+        app.setStyleSheet(file.read().replace("@STYLES@", styles_dir))
 
 window = LoginWindow()
 window.show()

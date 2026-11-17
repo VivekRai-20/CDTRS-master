@@ -144,8 +144,11 @@ class APIRepository(BaseRepository):
     def get_incoming_messages(self) -> List[Dict[str, Any]]:
         return self.get_intake_items()
 
-    def sync_outlook(self) -> Dict[str, Any]:
-        return self.client.post(Endpoints.INTAKE_SYNC_OUTLOOK, timeout=LONG_TIMEOUT) or {}
+    def sync_outlook(self, email: Optional[str] = None, password: Optional[str] = None) -> Dict[str, Any]:
+        """Sync the mailbox.  With an e-mail ID and password, the server signs
+        in to that mailbox for this sync only (nothing is stored)."""
+        payload = {"email": email, "password": password} if email and password else None
+        return self.client.post(Endpoints.INTAKE_SYNC_OUTLOOK, json=payload, timeout=LONG_TIMEOUT) or {}
 
     def process_intake(self, intake_id: int, payload: Dict[str, Any]) -> Optional[DocumentModel]:
         # The server OCRs the e-mail attachment while registering it.

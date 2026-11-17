@@ -169,7 +169,29 @@ class DocumentsPage(QWidget):
         self.print_all_btn.setVisible(False)
         filters.addWidget(self.print_all_btn)
 
-        layout.addLayout(filters)
+        # The filter bar reflows: one row on wide windows, two rows (search
+        # and buttons, then the filters) on narrow ones, so no field or
+        # button text is cut off.
+        self._filter_search = self.search
+        self._filter_combos = [
+            self.lifecycle_filter, self.priority_filter,
+            self.deadline_filter, self.mine_only,
+        ]
+        self._filter_buttons = [clear, refresh, self.print_all_btn]
+        for button in self._filter_buttons:
+            # Never narrower than the label plus its padding.
+            button.setMinimumWidth(button.fontMetrics().horizontalAdvance(button.text()) + 40)
+        while filters.count():
+            filters.takeAt(0)
+        for combo in self._filter_combos:
+            combo.setMinimumWidth(150)
+        self.search.setMinimumWidth(240)
+        self._filter_grid = QGridLayout()
+        self._filter_grid.setHorizontalSpacing(10)
+        self._filter_grid.setVerticalSpacing(8)
+        self._filters_wide = None
+        self._layout_filters(True)
+        layout.addLayout(self._filter_grid)
 
         # Result count / sorting row
         result_row = QHBoxLayout()
@@ -612,8 +634,9 @@ class DocumentsPage(QWidget):
         else:
             for summary in branches:
                 branch_frame = QFrame()
+                branch_frame.setObjectName("scoped_branch_frame_615")
                 branch_frame.setStyleSheet(
-                    "QFrame { background: white; border: 1px solid #E2E8F0; "
+                    "QFrame#scoped_branch_frame_615 { background: white; border: 1px solid #E2E8F0; "
                     "border-radius: 7px; }"
                 )
                 bl = QVBoxLayout(branch_frame)
@@ -683,8 +706,9 @@ class DocumentsPage(QWidget):
         else:
             for item in work_items:
                 person_frame = QFrame()
+                person_frame.setObjectName("scoped_person_frame_686")
                 person_frame.setStyleSheet(
-                    "QFrame { background: white; border: 1px solid #E2E8F0; "
+                    "QFrame#scoped_person_frame_686 { background: white; border: 1px solid #E2E8F0; "
                     "border-radius: 7px; }"
                 )
                 il = QVBoxLayout(person_frame)
@@ -1081,6 +1105,40 @@ class DocumentsPage(QWidget):
             else
             "No documents are visible in this work context yet."
         )
+
+    def _layout_filters(self, wide: bool) -> None:
+        if wide == self._filters_wide:
+            return
+        self._filters_wide = wide
+        grid = self._filter_grid
+        widgets = [self._filter_search] + self._filter_combos + self._filter_buttons
+        for widget in widgets:
+            grid.removeWidget(widget)
+        for col in range(12):
+            grid.setColumnStretch(col, 0)
+        if wide:
+            grid.addWidget(self._filter_search, 0, 0)
+            grid.setColumnStretch(0, 3)
+            for i, combo in enumerate(self._filter_combos, start=1):
+                grid.addWidget(combo, 0, i)
+                grid.setColumnStretch(i, 1)
+            for j, button in enumerate(self._filter_buttons, start=1 + len(self._filter_combos)):
+                grid.addWidget(button, 0, j)
+        else:
+            n = len(self._filter_combos)
+            grid.addWidget(self._filter_search, 0, 0, 1, n)
+            for j, button in enumerate(self._filter_buttons, start=n):
+                grid.addWidget(button, 0, j)
+            for i, combo in enumerate(self._filter_combos):
+                grid.addWidget(combo, 1, i)
+                grid.setColumnStretch(i, 1)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        try:
+            self._layout_filters(self.width() >= 1250)
+        except AttributeError:
+            pass
 
     def clear_filters(self) -> None:
         self.search.clear()

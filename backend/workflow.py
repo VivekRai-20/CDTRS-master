@@ -439,7 +439,7 @@ def _dispatch_email(
         return
     try:
         from mail.service import mail_service
-        if not mail_service.is_configured():
+        if not mail_service.can_send():
             return
         _MAIL_POOL.submit(
             _send_email_async,

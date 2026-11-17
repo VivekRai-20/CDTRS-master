@@ -554,6 +554,8 @@ class WorkflowEventModel:
     summary: str = ""
     details: Optional[str] = None
     created_at: Optional[str] = None
+    document_reference: Optional[str] = None
+    document_title: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Any) -> "WorkflowEventModel":
@@ -570,6 +572,8 @@ class WorkflowEventModel:
             summary=_get(data, "summary") or "",
             details=_get(data, "details"),
             created_at=_get(data, "created_at"),
+            document_reference=_get(data, "document_reference"),
+            document_title=_get(data, "document_title"),
         )
 
     @property

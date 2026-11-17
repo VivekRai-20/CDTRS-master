@@ -444,9 +444,8 @@ class DocumentViewer(QWidget):
 
         for review in doc.director_reviews:
             block = QFrame()
-            block.setStyleSheet(
-                "background-color: #FAFAFA; border-left: 3px solid #7C3AED; border-radius: 3px;"
-            )
+            block.setObjectName("scoped_block_447")
+            block.setStyleSheet("#scoped_block_447 {" + "background-color: #FAFAFA; border-left: 3px solid #7C3AED; border-radius: 3px;" + "}")
             inner = QVBoxLayout(block)
             inner.setContentsMargins(11, 8, 11, 8)
             inner.setSpacing(3)
@@ -539,9 +538,8 @@ class DocumentViewer(QWidget):
         ))
         for remark in remarks:
             block = QFrame()
-            block.setStyleSheet(
-                "background-color: #F8FAFC; border-left: 3px solid #CBD5E1; border-radius: 3px;"
-            )
+            block.setObjectName("scoped_block_542")
+            block.setStyleSheet("#scoped_block_542 {" + "background-color: #F8FAFC; border-left: 3px solid #CBD5E1; border-radius: 3px;" + "}")
             inner = QVBoxLayout(block)
             inner.setContentsMargins(11, 7, 11, 7)
             inner.setSpacing(2)
@@ -784,13 +782,29 @@ class DocumentViewer(QWidget):
         if dialog.exec() != dialog.DialogCode.Accepted:
             return
         data = dialog.get_data()
-        self._guard(
+        self._send_reminder_call(
             lambda: document_service.send_reminder(
                 self.document.id, data["work_item_id"], None, data["message"]
-            ),
-            "Reminder sent",
-            "The people holding open work have been notified.",
+            )
         )
+
+    def _send_reminder_call(self, action) -> None:
+        """Send a reminder and show what the server did: the in-app reminder
+        and whether the e-mail went out (or why it did not)."""
+        try:
+            result = action() or {}
+        except Exception as exc:
+            QMessageBox.warning(self, "Action failed", str(exc))
+            return
+        detail = result.get("detail") if isinstance(result, dict) else None
+        sent = result.get("sent", 0) if isinstance(result, dict) else 0
+        emailed = result.get("emailed", 0) if isinstance(result, dict) else 0
+        if sent and emailed < sent:
+            QMessageBox.warning(self, "Reminder sent in the app only", detail or "The e-mail could not be sent.")
+        else:
+            QMessageBox.information(self, "Reminder sent", detail or "The people holding open work have been notified.")
+        self.refresh()
+        self._notify_change()
 
     # ---- Director ----
 
@@ -986,10 +1000,8 @@ class DocumentViewer(QWidget):
         item = self._find_item(work_item_id)
         if not item:
             return
-        self._guard(
-            lambda: document_service.send_reminder(self.document.id, work_item_id),
-            "Reminder sent",
-            f"{item.assignee_name} has been reminded.",
+        self._send_reminder_call(
+            lambda: document_service.send_reminder(self.document.id, work_item_id)
         )
 
     def cleanup(self) -> None:

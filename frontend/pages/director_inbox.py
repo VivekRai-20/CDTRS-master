@@ -84,7 +84,7 @@ class DirectorInboxPage(QWidget):
         controls = QHBoxLayout()
         controls.addStretch()
 
-        open_btn = QPushButton("Open & Read")
+        open_btn = QPushButton("Open && Read")
         open_btn.setStyleSheet(
             "background-color: #F8FAFC; color: #0F172A; border: 1px solid #CBD5E1; "
             "font-weight: 600; padding: 7px 15px; border-radius: 4px;"

@@ -118,7 +118,7 @@ class DocumentPreview(QFrame):
 
         self.fit_btn = QPushButton("Fit")
         self.fit_btn.setStyleSheet(
-            "background: #F1F5F9; "
+            "background: #F1F5F9; color: #0F172A; "
             "border: 1px solid #CBD5E1; "
             "font-size: 11px; "
             "padding: 2px 8px; "
@@ -129,7 +129,7 @@ class DocumentPreview(QFrame):
 
         self.zoom_in_btn = QPushButton("+")
         self.zoom_in_btn.setStyleSheet(
-            "background: #F1F5F9; "
+            "background: #F1F5F9; color: #0F172A; "
             "border: 1px solid #CBD5E1; "
             "font-weight: bold; "
             "font-size: 11px; "
@@ -141,7 +141,7 @@ class DocumentPreview(QFrame):
 
         self.zoom_out_btn = QPushButton("-")
         self.zoom_out_btn.setStyleSheet(
-            "background: #F1F5F9; "
+            "background: #F1F5F9; color: #0F172A; "
             "border: 1px solid #CBD5E1; "
             "font-weight: bold; "
             "font-size: 11px; "

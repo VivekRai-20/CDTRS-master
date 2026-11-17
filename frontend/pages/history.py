@@ -231,6 +231,19 @@ class HistoryPage(QWidget):
             return ""
         return str(value)
 
+    def _event_time_display(self, event) -> str:
+        """'14 Nov 2026, 07:59' instead of the raw ISO timestamp, which did
+        not fit the timeline column and was cut off."""
+        raw = self._event_time(event)
+        if not raw:
+            return ""
+        try:
+            from datetime import datetime as _dt
+
+            return _dt.fromisoformat(raw.replace("Z", "+00:00")).strftime("%d %b %Y, %H:%M")
+        except Exception:
+            return raw
+
     # ------------------------------------------------------------------
     # Loading/grouping
     # ------------------------------------------------------------------
@@ -438,7 +451,7 @@ class HistoryPage(QWidget):
         meta = QLabel(
             f"{len(events)} event"
             f"{'' if len(events) == 1 else 's'}"
-            f"  •  Latest: {self._event_time(events[0]) or '—'}"
+            f"  •  Latest: {self._event_time_display(events[0]) or '—'}"
         )
         meta.setStyleSheet(
             "color: #64748B; font-size: 9px;"
@@ -538,7 +551,8 @@ class HistoryPage(QWidget):
         self.detail_layout.addWidget(header)
 
         timeline = QFrame()
-        timeline.setStyleSheet("QFrame { background: transparent; }")
+        timeline.setObjectName("scoped_timeline_541")
+        timeline.setStyleSheet("QFrame#scoped_timeline_541 { background: transparent; }")
         tl = QVBoxLayout(timeline)
         tl.setContentsMargins(12, 6, 12, 12)
         tl.setSpacing(0)
@@ -611,7 +625,7 @@ class HistoryPage(QWidget):
         time_box.setContentsMargins(0, 7, 0, 0)
         time_box.setSpacing(1)
 
-        when = self._event_time(event)
+        when = self._event_time_display(event)
         when_label = QLabel(when or "—")
         when_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         when_label.setWordWrap(True)
@@ -660,8 +674,9 @@ class HistoryPage(QWidget):
 
         # Event card
         card = QFrame()
+        card.setObjectName("scoped_card_663")
         card.setStyleSheet(
-            "QFrame { background: #FFFFFF; "
+            "QFrame#scoped_card_663 { background: #FFFFFF; "
             "border: 1px solid #E2E8F0; border-radius: 8px; }"
         )
 
@@ -723,8 +738,9 @@ class HistoryPage(QWidget):
         self._clear_layout(self.detail_layout)
 
         frame = QFrame()
+        frame.setObjectName("scoped_frame_726")
         frame.setStyleSheet(
-            "QFrame { background: #FFFFFF; border: 1px solid #E2E8F0; "
+            "QFrame#scoped_frame_726 { background: #FFFFFF; border: 1px solid #E2E8F0; "
             "border-radius: 10px; }"
         )
 
